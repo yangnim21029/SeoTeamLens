@@ -266,15 +266,34 @@ export default function KeywordRankDashboard() {
   const [forceRefresh, setForceRefresh] = useState(false);
   const [sourceMeta, setSourceMeta] = useState(null); // { csvRows, parsedKeywords, canonicalUrls }
   const isDev = process.env.NODE_ENV !== 'production';
-  // Single-select filter: 'none' | 'winners' | 'decliners' | 'top10' | 'drop10' | 'drop20'
+  // Single-select filter: 'none' | 'winners' | 'decliners' | 'top10' | 'notTop10' | 'drop10' | 'drop20'
   const [activeFilter, setActiveFilter] = useState('none');
   const [isFiltering, startFiltering] = useTransition();
 
-  // CSV + upstream defaults for HSHK
-  const csvFile = "SEO Work Allocation - HSHK 總表(更新中）.csv";
-  const site = "sc-domain:holidaysmart.io";
-  const keywordsCol = 10; // 1-based
-  const pageUrlCol = 15;  // 1-based
+  // Project selector (CSV + upstream settings)
+  const PROJECTS = [
+    { id: 'hshk', label: 'HSHK', file: 'hshk_08.csv', site: 'sc-domain:holidaysmart.io', keywordsCol: 10, pageUrlCol: 15 },
+    // topPage_08.csv is TSV with headers: Page\tKeyword
+    { id: 'top', label: 'TopPage', file: 'topPage_08.csv', site: 'sc-domain:pretty.presslogic.com', keywordsCol: 2, pageUrlCol: 1 },
+  ];
+  const [projectId, setProjectId] = useState(PROJECTS[0].id);
+  const [projectOpen, setProjectOpen] = useState(false);
+  const projRef = useRef(null);
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (!projRef.current) return;
+      if (!projRef.current.contains(e.target)) setProjectOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setProjectOpen(false); };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
+  const activeProject = useMemo(() => PROJECTS.find(p => p.id === projectId) || PROJECTS[0], [projectId]);
+  const { file: csvFile, site, keywordsCol, pageUrlCol } = activeProject;
 
   // Build keyword rows from upstream results
   function buildRowsFromResults(results, days, requestedPairs = []) {
@@ -329,7 +348,7 @@ export default function KeywordRankDashboard() {
         setLoading(true);
         setError("");
         const ts = forceRefresh ? `&_t=${Date.now()}` : '';
-        const url = `/api/run-csv/hshk?file=${encodeURIComponent(csvFile)}&days=${windowDays}&site=${encodeURIComponent(site)}&keywordsCol=${keywordsCol}&pageUrlCol=${pageUrlCol}${forceRefresh ? "&refresh=1" : ""}${ts}`;
+        const url = `/api/run-csv/${projectId}?file=${encodeURIComponent(csvFile)}&days=${windowDays}&site=${encodeURIComponent(site)}&keywordsCol=${keywordsCol}&pageUrlCol=${pageUrlCol}${forceRefresh ? "&refresh=1" : ""}${ts}`;
         const res = await fetch(url, { method: 'GET', cache: 'no-store' });
         if (!res.ok) {
           const txt = await res.text().catch(() => '');
@@ -351,7 +370,7 @@ export default function KeywordRankDashboard() {
     }
     fetchData();
     return () => { aborted = true; };
-  }, [csvFile, site, keywordsCol, pageUrlCol, windowDays, forceRefresh]);
+  }, [projectId, csvFile, site, keywordsCol, pageUrlCol, windowDays, forceRefresh]);
 
   const baseAll = useMemo(() => dedupeRows(rows), [rows]);
   const totalUrls = useMemo(() => new Set(baseAll.map((r) => r.displayUrl)).size, [baseAll]);
@@ -373,6 +392,8 @@ export default function KeywordRankDashboard() {
       grouped = grouped.filter((g) => g.declined > 0);
     } else if (activeFilter === 'top10') {
       grouped = grouped.filter((g) => (g.bestCurrent != null && g.bestCurrent <= 10));
+    } else if (activeFilter === 'notTop10') {
+      grouped = grouped.filter((g) => !(g.bestCurrent != null && g.bestCurrent <= 10));
     } else if (activeFilter === 'drop10') {
       grouped = grouped.filter((g) => g.items.some((it) => isDropFromTopN(it.start, it.end, 10)));
     } else if (activeFilter === 'drop20') {
@@ -407,6 +428,53 @@ export default function KeywordRankDashboard() {
           <p className="text-sm text-slate-500">快速檢查各 URL 聚合的 30 天名次變化（依最佳名次與趨勢）。</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Project selector (custom dropdown) */}
+          <div ref={projRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setProjectOpen((v) => !v)}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setProjectOpen(true);
+                }
+                if (e.key === 'Escape') setProjectOpen(false);
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 shadow-sm hover:bg-slate-50"
+              title="選擇專案"
+              aria-haspopup="listbox"
+              aria-expanded={projectOpen}
+            >
+              <ListTree className="h-4 w-4 text-slate-500" />
+              <span className="font-medium">{activeProject.label}</span>
+              <ChevronDown className={`h-4 w-4 text-slate-500 transition ${projectOpen ? 'rotate-180' : ''}`} />
+            </button>
+            <AnimatePresence>
+              {projectOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                  transition={{ duration: 0.12, ease: 'easeOut' }}
+                  className="absolute right-0 z-40 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl will-change-transform"
+                  role="listbox"
+                >
+                  {PROJECTS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => { setProjectId(p.id); setProjectOpen(false); }}
+                      className={`block w-full px-3 py-2 text-left text-sm ${projectId === p.id ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                      role="option"
+                      aria-selected={projectId === p.id}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <div className="flex overflow-hidden rounded-lg border border-slate-200 shadow-sm">
             {[7, 30, 90].map((d) => (
               <button
@@ -457,6 +525,7 @@ export default function KeywordRankDashboard() {
           <ToggleButton label="上升" active={activeFilter === 'winners'} onClick={() => startFiltering(() => setActiveFilter(activeFilter === 'winners' ? 'none' : 'winners'))} />
           <ToggleButton label="下滑" active={activeFilter === 'decliners'} onClick={() => startFiltering(() => setActiveFilter(activeFilter === 'decliners' ? 'none' : 'decliners'))} />
           <ToggleButton label="Top 10" active={activeFilter === 'top10'} onClick={() => startFiltering(() => setActiveFilter(activeFilter === 'top10' ? 'none' : 'top10'))} />
+          <ToggleButton label="未進入 Top 10" active={activeFilter === 'notTop10'} onClick={() => startFiltering(() => setActiveFilter(activeFilter === 'notTop10' ? 'none' : 'notTop10'))} />
           <ToggleButton label="掉出 Top 10" active={activeFilter === 'drop10'} onClick={() => startFiltering(() => setActiveFilter(activeFilter === 'drop10' ? 'none' : 'drop10'))} />
           <ToggleButton label="掉出 Top 20" active={activeFilter === 'drop20'} onClick={() => startFiltering(() => setActiveFilter(activeFilter === 'drop20' ? 'none' : 'drop20'))} />
           {isFiltering && <span className="text-xs text-slate-400">更新中…</span>}

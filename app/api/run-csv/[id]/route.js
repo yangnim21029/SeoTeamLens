@@ -40,6 +40,21 @@ function parseCSV(text) {
   return rows;
 }
 
+// Simple TSV parser (tab-separated, no quotes handling needed for our inputs)
+function parseTSV(text) {
+  const lines = text.split(/\r?\n/);
+  return lines.map((ln) => ln.split("\t"));
+}
+
+function parseSource(text) {
+  // Heuristic: if first non-empty line contains a tab and fewer commas, treat as TSV
+  const firstLine = (text.match(/^[^\n\r]*$/m) || [""])[0];
+  const tabCount = (firstLine.match(/\t/g) || []).length;
+  const commaCount = (firstLine.match(/,/g) || []).length;
+  if (tabCount > commaCount) return parseTSV(text);
+  return parseCSV(text);
+}
+
 function cleanQueryForSql(original) {
   if (!original) return null;
   const withoutCount = String(original).replace(/\(\d+\)/g, "").trim();
@@ -95,7 +110,7 @@ export async function GET(req, { params }) {
       return NextResponse.json({ error: `CSV not found: ${csvFileName}` }, { status: 404 });
     }
 
-    const rows = parseCSV(csvText);
+    const rows = parseSource(csvText);
     if (!rows.length) return NextResponse.json({ error: "CSV empty" }, { status: 400 });
     const dataRows = rows.slice(1);
 
