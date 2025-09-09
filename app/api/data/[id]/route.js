@@ -31,6 +31,13 @@ export async function GET(_req, { params }) {
 
 export async function POST(req, { params }) {
   try {
+    // Disallow writes on Vercel because the runtime filesystem is read-only
+    if (process.env.VERCEL) {
+      return NextResponse.json(
+        { error: "Read-only filesystem on Vercel runtime. Use a DB/KV or run locally to save." },
+        { status: 405 }
+      );
+    }
     const p = await params;
     const { id } = p || {};
     if (!validateId(id)) {

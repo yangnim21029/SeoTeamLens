@@ -222,6 +222,13 @@ export async function GET(req) {
 
     // Optionally save to app/data/<saveId>.json for later consumption
     if (saveId && /^[a-zA-Z0-9_-]{1,128}$/.test(saveId)) {
+      if (process.env.VERCEL) {
+        // Reject on Vercel since runtime FS is read-only
+        return NextResponse.json(
+          { error: "Save disabled on Vercel. Use a DB/KV or run locally." },
+          { status: 405 }
+        );
+      }
       await fs.mkdir(DATA_DIR, { recursive: true });
       const dest = path.join(DATA_DIR, `${saveId}.json`);
       await fs.writeFile(dest, JSON.stringify(payloadOut, null, 2), "utf8");

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { unstable_cache, revalidateTag } from "next/cache";
 import path from "node:path";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
@@ -7,7 +8,6 @@ import crypto from "node:crypto";
 
 const APP_DIR = process.cwd();
 const DATA_DIR = path.join(APP_DIR, "app", "data");
-const CACHE_DIR = path.join(DATA_DIR, "_cache");
 const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
@@ -172,62 +172,49 @@ export async function GET(req, { params }) {
       ORDER BY date::DATE, query;
     `;
 
-    // Cache lookup based on inputs
-    await fs.mkdir(CACHE_DIR, { recursive: true });
-    const cacheKey = hashKey({ id, file: csvFileName, site, days, keywordsCol, pageUrlCol });
-    const cachePath = path.join(CACHE_DIR, `${id}-${cacheKey}.json`);
-    if (!refresh) {
-      try {
-        const text = await fs.readFile(cachePath, "utf8");
-        const cache = JSON.parse(text);
-        const age = Date.now() - Number(cache?.ts || 0);
-        if (Number.isFinite(age) && age >= 0 && age < ONE_HOUR_MS && cache?.data) {
-          // Ensure requested keywords are returned even if old cache lacks it
-          const requestPairs = Array.from(requestedMap.values()).map((p) => ({
-            page: canonicalUrlMap.get(p.pageId) || undefined,
-            query: p.query,
-          }));
-          const computedMeta = { csvRows: dataRows.length, parsedKeywords: requestPairs.length, canonicalUrls: canonicalUrlMap.size };
-          const payload = cache?.requested ? cache : { ...cache, requested: requestPairs };
-          const meta = cache?.meta || computedMeta;
-          return NextResponse.json(payload.data ? { ...payload.data, requested: payload.requested, meta } : { ...payload, meta }, {
-            status: 200,
-            headers: { "Cache-Control": "s-maxage=3600, stale-while-revalidate=86400" },
-          });
+    // Next.js Data Cache via unstable_cache
+    const paramsHash = hashKey({ id, file: csvFileName, site, days, keywordsCol, pageUrlCol });
+    const tag = `run-csv:${id}`;
+    if (refresh) {
+      // Invalidate cached entries for this id
+      revalidateTag(tag);
+    }
+
+    const getData = unstable_cache(
+      async () => {
+        const payload = { data_type: "hourly", site, sql: sql.trim() };
+        const res = await fetch(UPSTREAM, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+          next: { revalidate: ONE_HOUR_MS / 1000 },
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`Upstream error ${res.status}: ${text.slice(0, 4000)}`);
         }
-      } catch { /* miss */ }
-    }
+        const data = await res.json();
+        const requested = Array.from(requestedMap.values()).map((p) => ({
+          page: canonicalUrlMap.get(p.pageId) || undefined,
+          query: p.query,
+        }));
+        const normalizedResults = Array.isArray(data?.results)
+          ? data.results.map((row) => {
+              const pid = extractArticleId(row.page);
+              const canon = pid ? (canonicalUrlMap.get(pid) || row.page) : row.page;
+              return { ...row, page: canon };
+            })
+          : [];
+        const meta = { csvRows: dataRows.length, parsedKeywords: requested.length, canonicalUrls: canonicalUrlMap.size };
+        const dataOut = { ...data, results: normalizedResults };
+        return { ...dataOut, requested, meta };
+      },
+      ["run-csv", id, paramsHash],
+      { revalidate: ONE_HOUR_MS / 1000, tags: [tag] }
+    );
 
-    // Fetch upstream
-    const payload = { data_type: "hourly", site, sql: sql.trim() };
-    const res = await fetch(UPSTREAM, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return NextResponse.json({ error: `Upstream error ${res.status}`, details: text.slice(0, 4000) }, { status: 502 });
-    }
-    const data = await res.json();
-    const requested = Array.from(requestedMap.values()).map((p) => ({
-      page: canonicalUrlMap.get(p.pageId) || undefined,
-      query: p.query,
-    }));
-    const normalizedResults = Array.isArray(data?.results)
-      ? data.results.map((row) => {
-          const pid = extractArticleId(row.page);
-          const canon = pid ? (canonicalUrlMap.get(pid) || row.page) : row.page;
-          return { ...row, page: canon };
-        })
-      : [];
-    const meta = { csvRows: dataRows.length, parsedKeywords: requested.length, canonicalUrls: canonicalUrlMap.size };
-
-    // Save cache
-    const dataOut = { ...data, results: normalizedResults };
-    await fs.writeFile(cachePath, JSON.stringify({ ts: Date.now(), data: dataOut, requested, meta }, null, 2), "utf8");
-
-    return NextResponse.json({ ...dataOut, requested, meta }, {
+    const cached = await getData();
+    return NextResponse.json(cached, {
       status: 200,
       headers: { "Cache-Control": "s-maxage=3600, stale-while-revalidate=86400" },
     });
