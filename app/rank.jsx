@@ -25,9 +25,11 @@ function seedFromString(str) {
   return h >>> 0;
 }
 
-const clampRank = (r) => (r == null ? null : Math.min(r, 100));
-const fmtRank = (r) => (r == null || r > 100 ? "N/A" : `#${r}`);
-const safeRank = (v) => (v == null || v > 100 ? 101 : v);
+const MAX_VISIBLE_RANK = 40;
+const MIN_IMPRESSIONS_FOR_TOP = 5;
+const clampRank = (r) => (r == null ? null : Math.min(r, MAX_VISIBLE_RANK));
+const fmtRank = (r) => (r == null || r > MAX_VISIBLE_RANK ? "N/A" : `#${r}`);
+const safeRank = (v) => (v == null || v > MAX_VISIBLE_RANK ? MAX_VISIBLE_RANK + 1 : v);
 const trendDelta = (start, end) => {
   const s = safeRank(start);
   const e = safeRank(end);
@@ -82,7 +84,7 @@ const Sparkline = memo(function Sparkline({ data }) {
   const baseUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const anchorUTC = baseUTC - 24 * 60 * 60 * 1000; // yesterday
   const series = useMemo(() => data.map((v, i) => {
-    const val = v == null || v > 100 ? 100 : v;
+    const val = v == null || v > MAX_VISIBLE_RANK ? MAX_VISIBLE_RANK : v;
     const d = new Date(anchorUTC);
     d.setUTCDate(d.getUTCDate() - (len - 1 - i));
     const label = `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`;
@@ -93,7 +95,7 @@ const Sparkline = memo(function Sparkline({ data }) {
     <div className="h-16 w-40">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={series} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
-          <YAxis hide domain={[1, 100]} reversed />
+          <YAxis hide domain={[1, MAX_VISIBLE_RANK]} reversed />
           <XAxis dataKey="date" hide />
           {/* Emphasized bands */}
           <ReferenceArea y1={1} y2={10.001} fill="#94a3b8" fillOpacity={0.28} />
@@ -156,11 +158,37 @@ function dedupeRows(rows) {
   return Array.from(map.values());
 }
 
+function fillInteriorGaps(series = []) {
+  const out = Array.from(series);
+  let lastIdx = -1;
+  let lastVal = null;
+  for (let i = 0; i < out.length; i++) {
+    const currentVal = out[i];
+    if (currentVal == null) continue;
+    if (lastIdx !== -1 && lastVal != null) {
+      const gapLen = i - lastIdx;
+      if (gapLen > 1) {
+        for (let step = 1; step < gapLen; step++) {
+          const ratio = step / gapLen;
+          const interpolated = Math.round(lastVal + (currentVal - lastVal) * ratio);
+          out[lastIdx + step] = Math.max(1, Math.min(MAX_VISIBLE_RANK, interpolated));
+        }
+      }
+    }
+    const clamped = Math.max(1, Math.min(MAX_VISIBLE_RANK, currentVal));
+    out[i] = clamped;
+    lastIdx = i;
+    lastVal = clamped;
+  }
+  return out;
+}
+
 // --- Aggregation helpers for URL view ---------------------------------------
 function aggregateByUrl(rows, windowDays) {
   const map = new Map();
   rows.forEach((r) => {
-    const windowHist = r.history.slice(-windowDays).map((v) => (v == null ? null : Math.min(v, 120)));
+    const windowHistRaw = r.history.slice(-windowDays).map((v) => (v == null ? null : Math.min(v, MAX_VISIBLE_RANK)));
+    const windowHist = fillInteriorGaps(windowHistRaw);
     const start = windowHist[0];
     const end = windowHist[windowHist.length - 1];
     const delta = trendDelta(start, end);
@@ -171,8 +199,8 @@ function aggregateByUrl(rows, windowDays) {
 
   const urlRows = Array.from(map.entries()).map(([url, items]) => {
     const days = items[0].windowHist.length;
-    const agg = Array.from({ length: days }, (_, i) => {
-      let best = 120;
+    const aggRaw = Array.from({ length: days }, (_, i) => {
+      let best = MAX_VISIBLE_RANK;
       let seen = false;
       items.forEach((it) => {
         const v = it.windowHist[i];
@@ -182,10 +210,13 @@ function aggregateByUrl(rows, windowDays) {
       });
       return seen ? best : null;
     });
+    const agg = fillInteriorGaps(aggRaw);
 
-    const bestCurrent = Math.min(...items.map((it) => safeRank(it.end)));
+    const bestCurrentRaw = Math.min(...items.map((it) => safeRank(it.end)));
+    const bestCurrent = bestCurrentRaw > MAX_VISIBLE_RANK ? null : bestCurrentRaw;
     const avgCurrentRaw = items.reduce((acc, it) => acc + safeRank(it.end), 0) / items.length;
-    const avgCurrent = Math.round(avgCurrentRaw);
+    const avgCurrentRounded = Math.round(avgCurrentRaw);
+    const avgCurrent = avgCurrentRounded > MAX_VISIBLE_RANK ? null : avgCurrentRounded;
     const improved = items.filter((it) => it.delta > 0).length;
     const declined = items.filter((it) => it.delta < 0).length;
     const inTop10 = items.filter((it) => it.end != null && it.end <= 10).length;
@@ -194,8 +225,8 @@ function aggregateByUrl(rows, windowDays) {
       displayUrl: url,
       items,
       aggSpark: agg,
-      bestCurrent: bestCurrent > 100 ? null : bestCurrent,
-      avgCurrent: avgCurrent > 100 ? null : avgCurrent,
+      bestCurrent,
+      avgCurrent,
       improved,
       declined,
       total: items.length,
@@ -216,10 +247,11 @@ function safeDecodeURL(u) {
 
 // --- Logging helpers (localStorage) ----------------------------------------
 const LOG_PREFIX = "krd:log:"; // key = krd:log:<url>::<keyword>
+const normalizeLogKeyword = (keyword) => (keyword ? keyword.toLowerCase() : "__all__");
 function logKey(url, keyword) {
-  return `${LOG_PREFIX}${(url || '').toLowerCase()}::${(keyword || '').toLowerCase()}`;
+  return `${LOG_PREFIX}${(url || '').toLowerCase()}::${normalizeLogKeyword(keyword)}`;
 }
-function readLogs(url, keyword) {
+function readLogs(url, keyword = null) {
   try {
     const raw = localStorage.getItem(logKey(url, keyword));
     const arr = raw ? JSON.parse(raw) : [];
@@ -228,7 +260,7 @@ function readLogs(url, keyword) {
     return [];
   }
 }
-function writeLogs(url, keyword, logs) {
+function writeLogs(url, keyword = null, logs) {
   try {
     localStorage.setItem(logKey(url, keyword), JSON.stringify(logs));
   } catch {}
@@ -272,7 +304,7 @@ export default function KeywordRankDashboard() {
 
   // Project selector (CSV + upstream settings)
   const PROJECTS = [
-    { id: 'hshk', label: 'HSHK', file: 'hshk_08.csv', site: 'sc-domain:holidaysmart.io', keywordsCol: 10, pageUrlCol: 15 },
+    { id: 'hshk', label: 'HSHK', file: 'hshk_08.csv', site: 'sc-domain:holidaysmart.io', keywordsCol: 14, pageUrlCol: 13 },
     // topPage_08.csv is TSV with headers: Page\tKeyword
     { id: 'top', label: 'TopPage', file: 'topPage_08.csv', site: 'sc-domain:pretty.presslogic.com', keywordsCol: 2, pageUrlCol: 1 },
   ];
@@ -324,14 +356,16 @@ export default function KeywordRankDashboard() {
       const page = row.page;
       const queryStr = row.query;
       const pos = Number.parseFloat(row.avg_position);
+      const impressions = Number(row.impressions ?? row.total_impressions ?? row.sum_impressions ?? row.impr);
       if (!dateVal || !page || !queryStr || !Number.isFinite(pos)) continue;
+      if (Math.round(pos) === 1 && Number.isFinite(impressions) && impressions > 0 && impressions < MIN_IMPRESSIONS_FOR_TOP) continue;
       const d = new Date(dateVal);
       const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
       const idx = dateIndex.get(label);
       if (idx == null) continue;
       const key = `${page}||${queryStr}`;
       if (!map.has(key)) {
-        map.set(key, { keyword: queryStr, displayUrl: page, history: Array.from({ length: days }, () => 120) });
+        map.set(key, { keyword: queryStr, displayUrl: page, history: Array.from({ length: days }, () => null) });
       }
       const rec = map.get(key);
       const rank = Math.max(1, Math.min(120, Math.round(pos)));
@@ -540,6 +574,7 @@ export default function KeywordRankDashboard() {
             expanded={expanded}
             toggleExpand={toggleExpand}
             copy={copy}
+            windowDays={windowDays}
           />
         </div>
       </div>
@@ -571,7 +606,7 @@ function ToggleButton({ label, active, onClick }) {
 }
 
 // --- URL Table ---------------------------------------------------------------
-function UrlTable({ view, expanded, toggleExpand, copy }) {
+function UrlTable({ view, expanded, toggleExpand, copy, windowDays }) {
   const containerRef = useRef(null);
   const ROW_HEIGHT = 64; // px, approximate fixed row height for summary row
   const THRESHOLD = 50; // item count threshold to turn on virtualization
@@ -624,23 +659,18 @@ function UrlTable({ view, expanded, toggleExpand, copy }) {
             <span className="ml-2 rounded-lg bg-rose-50 px-2 py-0.5 text-rose-700">-{u.declined}</span>
           </td>
         </tr>
-        {expanded.size === 0 ? null : ( // only render expanded content when virtualization is off
+        {expanded.size === 0 ? null : (
           expanded.has(u.displayUrl) && (
             <tr className="border-t border-slate-100 bg-slate-50/50">
-              <td colSpan={7} className="px-6 py-4">
-                <div className="text-xs text-slate-500 mb-2">關鍵字詳情：</div>
-                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                  {u.items.map((it) => (
-                    <KeywordDetailCard key={`${u.displayUrl}_${it.keyword}`} url={u.displayUrl} item={it} />
-                  ))}
-                </div>
+              <td colSpan={7} className="px-6 py-5">
+                <KeywordDetailPanel url={u.displayUrl} items={u.items} windowDays={windowDays} />
               </td>
             </tr>
           )
         )}
       </React.Fragment>
     );
-  }, [expanded, toggleExpand, copy]);
+  }, [expanded, toggleExpand, copy, windowDays]);
 
   // Virtual body component
   const VirtualBody = ({ items }) => {
@@ -709,50 +739,165 @@ function UrlTable({ view, expanded, toggleExpand, copy }) {
   );
 }
 
-// --- KeywordDetailCard with logging ----------------------------------------
-function KeywordDetailCard({ url, item }) {
+const KEYWORD_COLORS = [
+  "#1d4ed8",
+  "#0f766e",
+  "#f97316",
+  "#9d174d",
+  "#7c3aed",
+  "#059669",
+  "#b45309",
+  "#dc2626",
+  "#0284c7",
+  "#4c1d95",
+  "#db2777",
+  "#16a34a",
+];
+
+const KeywordDetailPanel = memo(function KeywordDetailPanel({ url, items, windowDays }) {
   const [note, setNote] = useState("");
   const [logs, setLogs] = useState([]);
+
   useEffect(() => {
-    setLogs(readLogs(url, item.keyword));
-  }, [url, item.keyword]);
+    setLogs(readLogs(url));
+  }, [url]);
+
+  const dateSeries = useMemo(() => {
+    const today = new Date();
+    const baseUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+    const anchorUTC = baseUTC - 24 * 60 * 60 * 1000; // yesterday
+    return Array.from({ length: windowDays }, (_, idx) => {
+      const back = windowDays - 1 - idx;
+      const d = new Date(anchorUTC);
+      d.setUTCDate(d.getUTCDate() - back);
+      return {
+        short: `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`,
+        full: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`,
+      };
+    });
+  }, [windowDays]);
+
+  const seriesMeta = useMemo(() => items.map((it, idx) => ({
+    dataKey: `kw${idx}`,
+    keyword: it.keyword,
+    color: KEYWORD_COLORS[idx % KEYWORD_COLORS.length],
+    delta: it.delta,
+    current: fmtRank(it.end),
+  })), [items]);
+
+  const chartData = useMemo(() => dateSeries.map((d, idx) => {
+    const row = { date: d.short, fullDate: d.full };
+    items.forEach((it, lineIdx) => {
+      row[`kw${lineIdx}`] = clampRank(it.windowHist[idx]);
+    });
+    return row;
+  }), [dateSeries, items]);
 
   const onAdd = () => {
-    const next = addLog(url, item.keyword, note);
+    const next = addLog(url, null, note);
     setLogs(next);
     setNote("");
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
-      <div className="mb-1 text-sm font-medium text-slate-800">{item.keyword}</div>
-      <div className="mb-2 text-xs text-slate-500">Current: {fmtRank(item.end)} · Δ: <span className={`${item.delta > 0 ? 'text-emerald-600' : item.delta < 0 ? 'text-rose-600' : 'text-slate-600'}`}>{item.delta > 0 ? `+${item.delta}` : item.delta}</span></div>
-      <Sparkline data={item.windowHist} />
-
-      {/* Log input */}
-      <div className="mt-3 flex items-center gap-2">
-        <input
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="新增備註（例如：調整標題、換 H1、內鏈優化）"
-          className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none placeholder:text-slate-400 focus:border-slate-300"
-        />
-        <button onClick={onAdd} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-100">Log</button>
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-col gap-4 sm:flex-row">
+          <div className="flex flex-col gap-2 sm:w-60">
+            {seriesMeta.map((meta) => (
+              <div key={meta.dataKey} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+                <div className="flex-1">
+                  <div className="font-medium leading-snug" title={meta.keyword}>{meta.keyword}</div>
+                  <div className="text-[11px] text-slate-500">
+                    {meta.current}
+                    {meta.delta !== 0 && (
+                      <span className={`ml-2 ${meta.delta > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{meta.delta > 0 ? `+${meta.delta}` : meta.delta}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="h-72 w-full sm:flex-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 16, right: 12, bottom: 16, left: 0 }}>
+                <YAxis domain={[1, MAX_VISIBLE_RANK]} reversed allowDataOverflow={false} tick={{ fontSize: 11 }} width={32} />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                <ReferenceArea y1={1} y2={10.001} fill="#94a3b8" fillOpacity={0.18} />
+                <ReferenceArea y1={10.001} y2={30.001} fill="#cbd5e1" fillOpacity={0.12} />
+                <ReferenceLine y={10} stroke="#64748b" strokeDasharray="4 4" strokeOpacity={0.6} ifOverflow="extendDomain" />
+                <ReferenceLine y={30} stroke="#94a3b8" strokeDasharray="4 4" strokeOpacity={0.5} ifOverflow="extendDomain" />
+                <CartesianGrid horizontal vertical={false} strokeDasharray="3 3" opacity={0.2} />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload || !payload.length) return null;
+                    const full = payload[0]?.payload?.fullDate || label;
+                    return (
+                      <div className="rounded-md bg-slate-900/90 px-3 py-2 text-xs text-white shadow">
+                        <div className="mb-1 font-medium">{full}</div>
+                        {payload.map((p) => {
+                          const meta = seriesMeta.find((m) => m.dataKey === p.dataKey);
+                          if (!meta) return null;
+                          return (
+                            <div key={p.dataKey} className="flex items-center gap-2">
+                              <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
+                              <span className="truncate" title={meta.keyword}>{meta.keyword}</span>
+                              <span className="ml-auto text-right">{fmtRank(p.value)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }}
+                />
+                {seriesMeta.map((meta) => (
+                  <Line
+                    key={meta.dataKey}
+                    type="monotone"
+                    dataKey={meta.dataKey}
+                    stroke={meta.color}
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                    connectNulls
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       </div>
 
-      {/* Log list (latest 3) */}
-      <div className="mt-2 space-y-1">
-        {logs.slice(0, 3).map((l, idx) => (
-          <div key={idx} className="text-[11px] text-slate-600">
-            <span className="mr-1 inline-block rounded bg-slate-100 px-1">{fmtTs(l.ts)}</span>
-            {l.note}
-          </div>
-        ))}
-        {logs.length === 0 && <div className="text-[11px] text-slate-400">尚無備註</div>}
+      <div>
+        <div className="mb-2 text-xs font-medium text-slate-500">調整紀錄</div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="新增備註（例如：調整標題、換 H1、內鏈優化）"
+            className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none placeholder:text-slate-400 focus:border-slate-300"
+          />
+          <button
+            onClick={onAdd}
+            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Log
+          </button>
+        </div>
+        <div className="mt-2 space-y-1">
+          {logs.slice(0, 5).map((l, idx) => (
+            <div key={idx} className="text-[11px] text-slate-600">
+              <span className="mr-2 inline-block rounded bg-slate-100 px-1 py-0.5">{fmtTs(l.ts)}</span>
+              {l.note}
+            </div>
+          ))}
+          {logs.length === 0 && <div className="text-[11px] text-slate-400">尚無備註</div>}
+        </div>
       </div>
     </div>
   );
-}
+});
 
 // --- Lightweight self-test suite (URL-only) ---------------------------------
 function runSelfTests({ urlView, windowDays }) {

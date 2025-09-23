@@ -15,8 +15,8 @@ function getHshkConfig() {
       sourceSheetName: 'HSHK 總表(更新中）',
       destinationSheetName: 'HSHK Ranking',
       gscSite: 'sc-domain:holidaysmart.io',
-      keywordsCol: 10, // J 欄
-      pageUrlCol: 15   // O 欄
+      keywordsCol: 14, // N 欄（Tracking Keyword）
+      pageUrlCol: 13   // M 欄（上稿 URL）
     };
   }
   

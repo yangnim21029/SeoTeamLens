@@ -10,6 +10,7 @@ const APP_DIR = process.cwd();
 const DATA_DIR = path.join(APP_DIR, "app", "data");
 const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
 const ONE_HOUR_MS = 60 * 60 * 1000;
+const MIN_IMPRESSIONS_FOR_TOP = 5;
 
 function parseIntOr(value, fallback) {
   const n = Number.parseInt(String(value ?? "").trim(), 10);
@@ -160,7 +161,7 @@ export async function GET(req, { params }) {
 
     const combinedWhere = whereConditions.join(" OR \n        ");
     const sql = `
-      SELECT date::DATE, query, page, AVG(position) AS avg_position
+      SELECT date::DATE, query, page, AVG(position) AS avg_position, SUM(impressions) AS impressions
       FROM {site_hourly}
       WHERE date::DATE >= CURRENT_DATE - INTERVAL '${days} days'
       AND date::DATE < CURRENT_DATE
@@ -199,11 +200,22 @@ export async function GET(req, { params }) {
           query: p.query,
         }));
         const normalizedResults = Array.isArray(data?.results)
-          ? data.results.map((row) => {
-              const pid = extractArticleId(row.page);
-              const canon = pid ? (canonicalUrlMap.get(pid) || row.page) : row.page;
-              return { ...row, page: canon };
-            })
+          ? data.results
+              .map((row) => {
+                const pid = extractArticleId(row.page);
+                const canon = pid ? (canonicalUrlMap.get(pid) || row.page) : row.page;
+                return { ...row, page: canon };
+              })
+              .filter((row) => {
+                const pos = Number(row.avg_position);
+                const impressions = Number(row.impressions ?? row.total_impressions ?? row.sum_impressions ?? row.impr);
+                if (Number.isFinite(pos) && Math.round(pos) === 1) {
+                  if (Number.isFinite(impressions) && impressions > 0 && impressions < MIN_IMPRESSIONS_FOR_TOP) {
+                    return false;
+                  }
+                }
+                return true;
+              })
           : [];
         const meta = { csvRows: dataRows.length, parsedKeywords: requested.length, canonicalUrls: canonicalUrlMap.size };
         const dataOut = { ...data, results: normalizedResults };

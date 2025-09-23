@@ -10,6 +10,7 @@ const DEFAULT_CSV = "SEO Work Allocation - HSHK 總表(更新中）.csv";
 const DEFAULT_SITE = "sc-domain:holidaysmart.io"; // HSHK
 const DEFAULT_DAYS = 21;
 const RANK_QUERY_API = process.env.RANK_QUERY_API || "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
+const MIN_IMPRESSIONS_FOR_TOP = 5;
 
 function parseIntOr(value, fallback) {
   const n = Number.parseInt(String(value ?? "").trim(), 10);
@@ -137,7 +138,7 @@ export async function GET(req) {
     // Build SQL
     const combinedWhere = whereConditions.join(" OR \n        ");
     const sql = `
-      SELECT date::DATE, query, page, AVG(position) AS avg_position
+      SELECT date::DATE, query, page, AVG(position) AS avg_position, SUM(impressions) AS impressions
       FROM {site_hourly}
       WHERE date::DATE >= CURRENT_DATE - INTERVAL '${days} days'
       AND date::DATE < CURRENT_DATE
@@ -166,7 +167,17 @@ export async function GET(req) {
     }
 
     const data = await res.json();
-    const results = Array.isArray(data?.results) ? data.results : [];
+    const rawResults = Array.isArray(data?.results) ? data.results : [];
+    const results = rawResults.filter((row) => {
+      const posVal = Number(row?.avg_position);
+      const impressions = Number(row?.impressions ?? row?.total_impressions ?? row?.sum_impressions ?? row?.impr);
+      if (Number.isFinite(posVal) && Math.round(posVal) === 1) {
+        if (Number.isFinite(impressions) && impressions > 0 && impressions < MIN_IMPRESSIONS_FOR_TOP) {
+          return false;
+        }
+      }
+      return true;
+    });
 
     // Build date headers
     const today = new Date();
