@@ -244,7 +244,11 @@ function DashboardOverview({ data, windowDays }) {
               src={`https://www.google.com/s2/favicons?domain=${primaryDomain}&sz=64`}
               alt={primaryDomain}
               className="max-h-10 max-w-10 object-contain"
-              data-domain={primaryDomain.split('.')[0].charAt(0).toUpperCase() + primaryDomain.split('.')[0].slice(1)}
+              data-domain={(() => {
+                const parts = primaryDomain.split('.');
+                const mainDomain = parts.length > 2 ? parts[parts.length - 2] : parts[0];
+                return mainDomain.charAt(0).toUpperCase() + mainDomain.slice(1);
+              })()}
             />
           ) : (
             "URL"
