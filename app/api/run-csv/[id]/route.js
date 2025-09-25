@@ -64,6 +64,14 @@ function cleanQueryForSql(original) {
   return { original: withoutCount, spaceless };
 }
 
+function extractVolume(text) {
+  if (!text) return null;
+  const match = String(text).match(/\((\d+)\)(?!.*\(\d+\))/);
+  if (!match) return null;
+  const n = Number.parseInt(match[1], 10);
+  return Number.isFinite(n) ? n : null;
+}
+
 function extractArticleId(url) {
   if (typeof url !== "string") return null;
   const m = url.match(/\/article\/(\d+)/);
@@ -134,6 +142,8 @@ export async function GET(req, { params }) {
         canonicalUrlMap.set(pageId, pageUrl);
       }
 
+      const rawTag = typeof r[3] === "string" ? r[3].trim() : typeof r[2] === "string" ? r[2].trim() : "";
+
       // Support multiple delimiters: newline, comma (half/full), list marks, slash, semicolon
       const queryLines = String(queriesRaw)
         .split(/\r?\n|,|，|、|;|；|\/|／/)
@@ -144,9 +154,10 @@ export async function GET(req, { params }) {
         const info = cleanQueryForSql(q);
         if (!info) continue;
         cleanedForSql.push(`'${info.spaceless.replace(/'/g, "''")}'`);
+        const volume = extractVolume(q);
         const key = `${pageId}||${info.spaceless}`;
         if (!requestedMap.has(key)) {
-          requestedMap.set(key, { pageId, query: info.original });
+          requestedMap.set(key, { pageId, query: info.original, tag: rawTag || null, volume: volume ?? null });
         }
       }
       if (cleanedForSql.length) {
@@ -161,7 +172,13 @@ export async function GET(req, { params }) {
 
     const combinedWhere = whereConditions.join(" OR \n        ");
     const sql = `
-      SELECT date::DATE, query, page, AVG(position) AS avg_position, SUM(impressions) AS impressions
+      SELECT
+        date::DATE,
+        query,
+        page,
+        AVG(position) AS avg_position,
+        SUM(impressions) AS impressions,
+        SUM(clicks) AS clicks
       FROM {site_hourly}
       WHERE date::DATE >= CURRENT_DATE - INTERVAL '${days} days'
       AND date::DATE < CURRENT_DATE
@@ -198,13 +215,20 @@ export async function GET(req, { params }) {
         const requested = Array.from(requestedMap.values()).map((p) => ({
           page: canonicalUrlMap.get(p.pageId) || undefined,
           query: p.query,
+          tag: p.tag || null,
+          volume: p.volume ?? null,
         }));
         const normalizedResults = Array.isArray(data?.results)
           ? data.results
               .map((row) => {
                 const pid = extractArticleId(row.page);
                 const canon = pid ? (canonicalUrlMap.get(pid) || row.page) : row.page;
-                return { ...row, page: canon };
+                const impressions = Number(row.impressions ?? row.total_impressions ?? row.sum_impressions ?? row.impr);
+                const clicks = Number(row.clicks ?? row.total_clicks ?? row.sum_clicks ?? row.click);
+                const normalized = { ...row, page: canon };
+                if (Number.isFinite(impressions)) normalized.impressions = impressions;
+                if (Number.isFinite(clicks)) normalized.clicks = clicks;
+                return normalized;
               })
               .filter((row) => {
                 const pos = Number(row.avg_position);

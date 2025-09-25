@@ -54,7 +54,11 @@ export function dedupeRows(rows) {
       map.set(key, cur);
     }
   });
-  return Array.from(map.values());
+  return Array.from(map.values()).map((row) => {
+    const history = Array.isArray(row.history) ? row.history : [];
+    const filled = fillExteriorGaps(fillInteriorGaps(history));
+    return { ...row, history: filled };
+  });
 }
 
 export function fillInteriorGaps(series = []) {
@@ -84,19 +88,6 @@ export function fillInteriorGaps(series = []) {
 
 export function fillExteriorGaps(series = []) {
   const out = Array.from(series);
-  let firstSeen = null;
-  for (let i = 0; i < out.length; i++) {
-    const value = out[i];
-    if (value == null) continue;
-    firstSeen = value;
-    break;
-  }
-  if (firstSeen != null) {
-    for (let i = 0; i < out.length && out[i] == null; i++) {
-      out[i] = firstSeen;
-    }
-  }
-
   let lastSeen = null;
   for (let i = out.length - 1; i >= 0; i--) {
     const value = out[i];
@@ -212,5 +203,60 @@ export function buildRowsFromResults(results, days, requestedPairs = []) {
     const rank = Math.max(1, Math.min(120, Math.round(pos)));
     rec.history[idx] = rank;
   }
-  return Array.from(map.values());
+  return Array.from(map.values()).map((row) => {
+    const history = Array.isArray(row.history) ? row.history : [];
+    const filled = fillExteriorGaps(fillInteriorGaps(history));
+    return { ...row, history: filled };
+  });
+}
+
+export function buildTrafficTimeline(results = [], days = 0) {
+  const len = Number.isFinite(days) && days > 0 ? Number(days) : 0;
+  if (!len) return [];
+
+  const today = new Date();
+  const baseUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const anchorUTC = baseUTC - 24 * 60 * 60 * 1000;
+
+  const out = new Array(len);
+  const dateIndex = new Map();
+  for (let i = len - 1; i >= 0; i--) {
+    const d = new Date(anchorUTC);
+    d.setUTCDate(d.getUTCDate() - i);
+    const year = d.getUTCFullYear();
+    const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    const fullDate = `${year}-${month}-${day}`;
+    const idx = (len - 1) - i;
+    out[idx] = {
+      date: `${month}/${day}`,
+      fullDate,
+      impressions: 0,
+      clicks: 0,
+    };
+    dateIndex.set(fullDate, idx);
+  }
+
+  results.forEach((row) => {
+    if (!row) return;
+    const dateVal = row["CAST(date AS DATE)"] || row.date || row.dt;
+    if (!dateVal) return;
+    const d = new Date(dateVal);
+    if (Number.isNaN(d.getTime())) return;
+    const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    const idx = dateIndex.get(label);
+    if (idx == null) return;
+
+    const impressions = Number(row.impressions ?? row.total_impressions ?? row.sum_impressions ?? row.impr);
+    if (Number.isFinite(impressions)) {
+      out[idx].impressions += impressions;
+    }
+
+    const clicks = Number(row.clicks ?? row.total_clicks ?? row.sum_clicks ?? row.click);
+    if (Number.isFinite(clicks)) {
+      out[idx].clicks += clicks;
+    }
+  });
+
+  return out;
 }

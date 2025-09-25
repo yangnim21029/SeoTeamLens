@@ -34,14 +34,15 @@ export default function AppShell({ children }) {
             <Link
               key={item.href}
               href={item.href}
-              className={`group flex h-10 w-10 items-center justify-center rounded-xl border bg-white transition ${
+              className={`group relative flex h-12 w-12 items-center justify-center rounded-xl border transition ${
                 active
-                  ? "border-slate-900 bg-slate-900 text-white shadow"
-                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900"
+                  ? "border-slate-900 bg-slate-900/90 text-white shadow-inner"
+                  : "border-transparent text-slate-500 hover:border-slate-200 hover:bg-white/80 hover:text-slate-900"
               }`}
               title={item.label}
             >
-              <Icon className="h-5 w-5" />
+              {active && <span className="absolute inset-0 rounded-xl border border-white/80" />}
+              <Icon className={`relative h-5 w-5 ${active ? "text-white" : ""}`} />
             </Link>
           );
         })}
@@ -106,7 +107,7 @@ function TopHeader({ projectId, setProjectId, projects, windowDays, setWindowDay
             activeProject={activeProject}
           />
           <div className="flex overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm">
-            {[7, 30, 90].map((d) => (
+            {[7, 30, 60].map((d) => (
               <button
                 key={d}
                 type="button"
