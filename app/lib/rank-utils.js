@@ -4,6 +4,13 @@ export const MIN_IMPRESSIONS_FOR_TOP = 5;
 export const clampRank = (r) => (r == null ? null : Math.min(r, MAX_VISIBLE_RANK));
 export const fmtRank = (r) => (r == null || r > MAX_VISIBLE_RANK ? "N/A" : `#${r}`);
 export const safeRank = (v) => (v == null || v > MAX_VISIBLE_RANK ? MAX_VISIBLE_RANK + 1 : v);
+export const latestDefinedRank = (series = []) => {
+  for (let i = series.length - 1; i >= 0; i--) {
+    const value = series[i];
+    if (value != null) return value;
+  }
+  return null;
+};
 
 export const trendDelta = (start, end) => {
   const s = safeRank(start);
@@ -75,13 +82,44 @@ export function fillInteriorGaps(series = []) {
   return out;
 }
 
+export function fillExteriorGaps(series = []) {
+  const out = Array.from(series);
+  let firstSeen = null;
+  for (let i = 0; i < out.length; i++) {
+    const value = out[i];
+    if (value == null) continue;
+    firstSeen = value;
+    break;
+  }
+  if (firstSeen != null) {
+    for (let i = 0; i < out.length && out[i] == null; i++) {
+      out[i] = firstSeen;
+    }
+  }
+
+  let lastSeen = null;
+  for (let i = out.length - 1; i >= 0; i--) {
+    const value = out[i];
+    if (value == null) continue;
+    lastSeen = value;
+    break;
+  }
+  if (lastSeen != null) {
+    for (let i = out.length - 1; i >= 0 && out[i] == null; i--) {
+      out[i] = lastSeen;
+    }
+  }
+
+  return out;
+}
+
 export function aggregateByUrl(rows, windowDays) {
   const map = new Map();
   rows.forEach((r) => {
     const windowHistRaw = r.history.slice(-windowDays).map((v) => (v == null ? null : Math.min(v, MAX_VISIBLE_RANK)));
-    const windowHist = fillInteriorGaps(windowHistRaw);
+    const windowHist = fillExteriorGaps(fillInteriorGaps(windowHistRaw));
     const start = windowHist[0];
-    const end = windowHist[windowHist.length - 1];
+    const end = latestDefinedRank(windowHist);
     const delta = trendDelta(start, end);
     const item = { ...r, windowHist, start, end, delta };
     if (!map.has(r.displayUrl)) map.set(r.displayUrl, []);
@@ -101,10 +139,8 @@ export function aggregateByUrl(rows, windowDays) {
       });
       return seen ? best : null;
     });
-    const agg = fillInteriorGaps(aggRaw);
+    const agg = fillExteriorGaps(fillInteriorGaps(aggRaw));
 
-    const bestCurrentRaw = Math.min(...items.map((it) => safeRank(it.end)));
-    const bestCurrent = bestCurrentRaw > MAX_VISIBLE_RANK ? null : bestCurrentRaw;
     const avgCurrentRaw = items.reduce((acc, it) => acc + safeRank(it.end), 0) / items.length;
     const avgCurrentRounded = Math.round(avgCurrentRaw);
     const avgCurrent = avgCurrentRounded > MAX_VISIBLE_RANK ? null : avgCurrentRounded;
@@ -116,7 +152,6 @@ export function aggregateByUrl(rows, windowDays) {
       displayUrl: url,
       items,
       aggSpark: agg,
-      bestCurrent,
       avgCurrent,
       improved,
       declined,

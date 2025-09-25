@@ -68,9 +68,9 @@ export default function UrlRankingPage() {
     } else if (activeFilter === "decliners") {
       view = view.filter((g) => g.declined > 0);
     } else if (activeFilter === "top10") {
-      view = view.filter((g) => g.bestCurrent != null && g.bestCurrent <= 10);
+      view = view.filter((g) => g.inTop10 > 0);
     } else if (activeFilter === "notTop10") {
-      view = view.filter((g) => !(g.bestCurrent != null && g.bestCurrent <= 10));
+      view = view.filter((g) => g.inTop10 === 0);
     } else if (activeFilter === "drop10") {
       view = view.filter((g) => g.items.some((it) => isDropFromTopN(it.start, it.end, 10)));
     } else if (activeFilter === "drop20") {
@@ -78,9 +78,10 @@ export default function UrlRankingPage() {
     }
 
     return [...view].sort((a, b) => {
-      const va = a.bestCurrent ?? 999;
-      const vb = b.bestCurrent ?? 999;
-      return va - vb;
+      const va = a.avgCurrent ?? 999;
+      const vb = b.avgCurrent ?? 999;
+      if (va !== vb) return va - vb;
+      return b.inTop10 - a.inTop10;
     });
   }, [groupedBase, deferredQuery, activeFilter]);
 
@@ -210,6 +211,7 @@ function UrlTable({ view, expanded, toggleExpand, copy, windowDays }) {
   const Row = useCallback(
     (group) => {
       const isOpen = expanded.has(group.displayUrl);
+      const visibleKeywords = isOpen ? group.items : group.items.slice(0, 3);
       return (
         <React.Fragment key={group.displayUrl}>
           <tr className="border-t border-slate-100 hover:bg-slate-50/60">
@@ -246,18 +248,24 @@ function UrlTable({ view, expanded, toggleExpand, copy, windowDays }) {
             </td>
             <td className="px-4 py-3">
               <div className="text-slate-800">
-                {group.items.slice(0, 3).map((it, idx) => (
-                  <span key={it.keyword} className="inline">
-                    {idx > 0 ? ", " : ""}
-                    {it.keyword}
+                {visibleKeywords.map((it, idx) => (
+                  <span key={it.keyword} className="block">
+                    {isOpen ? `${idx + 1}. ${it.keyword}` : it.keyword}
                   </span>
                 ))}
-                {group.total > 3 && <span className="text-slate-500">，+{group.total - 3} 更多</span>}
+                {group.total > 3 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(group.displayUrl)}
+                    className="mt-1 inline-flex items-center text-sky-600 hover:underline"
+                  >
+                    {isOpen ? "收合同列" : `展開全部（+${group.total - 3}）`}
+                  </button>
+                )}
               </div>
             </td>
-            <td className="px-4 py-3 font-semibold text-slate-700">{fmtRank(group.bestCurrent)}</td>
             <td className="px-4 py-3 text-slate-700">{fmtRank(group.avgCurrent)}</td>
-            <td className="px-4 py-3 text-slate-700">{group.inTop10}</td>
+            <td className="px-4 py-3 text-slate-700">{group.inTop10}/{group.total}</td>
             <td className="px-4 py-3">
               <Sparkline data={group.aggSpark} />
             </td>
@@ -268,7 +276,7 @@ function UrlTable({ view, expanded, toggleExpand, copy, windowDays }) {
           </tr>
           {isOpen && (
             <tr className="border-t border-slate-100 bg-slate-50/70">
-              <td colSpan={7} className="px-4 py-4">
+              <td colSpan={6} className="px-4 py-4">
                 <KeywordDetailPanel url={group.displayUrl} items={group.items} windowDays={windowDays} />
               </td>
             </tr>
@@ -308,11 +316,11 @@ function UrlTable({ view, expanded, toggleExpand, copy, windowDays }) {
     return (
       <tbody>
         <tr style={{ height: topPad }}>
-          <td colSpan={7} />
+          <td colSpan={6} />
         </tr>
         {slice.map((group) => Row(group))}
         <tr style={{ height: bottomPad }}>
-          <td colSpan={7} />
+          <td colSpan={6} />
         </tr>
       </tbody>
     );
@@ -326,7 +334,6 @@ function UrlTable({ view, expanded, toggleExpand, copy, windowDays }) {
             <tr className="bg-slate-50 text-slate-600">
               <th className="px-4 py-3">Display URL</th>
               <th className="px-4 py-3">Keywords</th>
-              <th className="px-4 py-3">Best Current</th>
               <th className="px-4 py-3">Avg Current</th>
               <th className="px-4 py-3">Top10</th>
               <th className="px-4 py-3">Agg Trend</th>
