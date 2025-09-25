@@ -14,7 +14,7 @@ import {
 
 import Sparkline from "../components/Sparkline";
 import { useRankData } from "../context/rank-data";
-import { MAX_VISIBLE_RANK } from "../lib/rank-utils";
+import { MAX_VISIBLE_RANK, safeDecodeURL } from "../lib/rank-utils";
 
 const WEEKDAY_LABELS = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
 
@@ -731,36 +731,39 @@ function MoverList({ title, items, emptyLabel = "尚無資料", showUnit = true 
         {items.length === 0 ? (
           <div className="text-xs text-slate-400">{emptyLabel}</div>
         ) : (
-          <ol className="space-y-2 text-xs text-slate-700">
+          <ol className="text-xs text-slate-700">
             {items.map((item, idx) => {
               const deltaLabel = item.delta > 0 ? `+${item.delta}` : item.delta;
-              const unit = showUnit ? " 次" : "";
+              const unit = showUnit ? " 位" : "";
               const currentValue = Number(item.current || 0);
               const currentText = Number.isFinite(currentValue)
                 ? currentValue.toLocaleString()
                 : String(item.current ?? "—");
               const currentDisplay = `${currentText}${showUnit ? unit : ""}`;
+              const decodedLabel = item.type === "page" ? (safeDecodeURL(item.label) || item.label) : item.label;
               const content = (
                 <>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="truncate font-medium text-slate-800">
-                      {idx + 1}. {item.label}
+                    <span className="truncate font-medium text-slate-800 max-w-[160px] sm:max-w-[200px]">
+                      {decodedLabel}
                     </span>
                     <span className="flex items-center gap-3 text-[11px] font-semibold text-slate-600">
-                      <span className="text-slate-500">{currentDisplay}</span>
-                      <span className={`font-mono ${item.delta > 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                      <span className="text-slate-500 whitespace-nowrap">{currentDisplay}</span>
+                      <span className={`font-mono whitespace-nowrap ${item.delta > 0 ? "text-emerald-500" : "text-rose-500"}`}>
                         {deltaLabel}
                         {unit}
                       </span>
+                      <span className="text-slate-400 whitespace-nowrap">使用者</span>
                     </span>
                   </div>
                 </>
               );
 
-              const itemClass = "block rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 transition hover:border-slate-200 hover:bg-slate-100";
+              const itemClass = "block px-3 py-3 transition hover:bg-slate-50";
+              const wrapperClass = idx === 0 ? "" : "border-t border-slate-200";
 
               return (
-                <li key={`${item.label}-${idx}`}>
+                <li key={`${item.label}-${idx}`} className={wrapperClass}>
                   {item.href ? (
                     <a
                       href={item.href}
