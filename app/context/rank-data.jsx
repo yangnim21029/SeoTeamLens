@@ -40,6 +40,25 @@ const formatDisplayUrl = (input) => {
   }
 };
 
+const ensureAbsoluteUrl = (input, domainFallback) => {
+  const decoded = safeDecodeURL(input);
+  if (!decoded || typeof decoded !== "string") return null;
+  const trimmed = decoded.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("//")) return `https:${trimmed}`;
+  if (/^[\w.-]+\.[A-Za-z]{2,}(\/.*)?$/.test(trimmed)) {
+    return `https://${trimmed.replace(/^\/+/, "")}`;
+  }
+  if (domainFallback) {
+    const host = domainFallback.replace(/^https?:\/\//i, "");
+    if (!host) return null;
+    const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+    return `https://${host}${path}`;
+  }
+  return null;
+};
+
 const extractDomain = (input) => {
   const decoded = safeDecodeURL(input);
   if (!decoded || typeof decoded !== "string") return null;
@@ -428,6 +447,7 @@ export function RankDataProvider({ children }) {
           query: raw,
           tag: item?.tag || null,
           volume: Number.isFinite(Number(item?.volume)) ? Number(item.volume) : null,
+          page: item?.page ? safeDecodeURL(item.page) : null,
         });
       }
     });
@@ -472,6 +492,7 @@ const keywordAggregates = useMemo(() => {
   const names = new Map();
   const currentSeries = new Map();
   const previousSeries = new Map();
+  const pageMap = new Map();
   const currentLen = timeline.length;
   const previousLen = timelinePrevious.length;
 
@@ -520,9 +541,13 @@ const keywordAggregates = useMemo(() => {
       series[index] += impressions;
     }
     if (!names.has(key)) names.set(key, queryStr);
+    if (!pageMap.has(key)) {
+      const rawPage = row?.page || row?.page_url || row?.displayUrl || row?.url;
+      if (rawPage) pageMap.set(key, safeDecodeURL(rawPage));
+    }
   });
 
-  return { current, previous, names, currentSeries, previousSeries };
+  return { current, previous, names, currentSeries, previousSeries, pageMap };
 }, [rawResults, currentIndexMap, previousIndexMap, timeline.length, timelinePrevious.length]);
 
 const pageTrafficAggregates = useMemo(() => {
@@ -563,6 +588,7 @@ const keywordSearchRows = useMemo(() => {
       const label = meta.query || keywordAggregates.names.get(key) || "";
       const seriesCurrent = keywordAggregates.currentSeries.get(key) || [];
       const seriesPrevious = keywordAggregates.previousSeries.get(key) || [];
+      const pageSource = meta.page || keywordAggregates.pageMap.get(key) || null;
       return {
         query: label,
         tag: meta.tag || null,
@@ -575,6 +601,7 @@ const keywordSearchRows = useMemo(() => {
         clicksDelta: current.clicks - previous.clicks,
         seriesCurrent: seriesCurrent.slice(),
         seriesPrevious: seriesPrevious.slice(),
+        page: pageSource,
       };
     })
     .sort((a, b) => b.impressions - a.impressions);
@@ -584,10 +611,10 @@ const keywordSearchMap = useMemo(() => {
   const map = new Map();
   keywordSearchRows.forEach((row) => {
     const key = normalizeQueryKey(row.query);
-      map.set(key, row);
-    });
-    return map;
-  }, [keywordSearchRows]);
+    if (key) map.set(key, row);
+  });
+  return map;
+}, [keywordSearchRows]);
 
 const keywordMissingRows = useMemo(() => {
   if (!requestedMeta.length) return [];
@@ -692,14 +719,11 @@ const queryMovers = useMemo(() => {
     .map((row) => {
       const delta = Number(row.clicksDelta ?? row.impressionsDelta ?? 0);
       if (!delta) return null;
-      const href = row.displayUrl
-        ? (row.displayUrl.startsWith("http://") || row.displayUrl.startsWith("https://")
-            ? row.displayUrl
-            : `https://${row.displayUrl.replace(/^\/+/, "")}`)
-        : null;
+      const queryText = row.query || "";
+      const href = row.page ? ensureAbsoluteUrl(row.page, primaryDomain) : null;
       return {
         type: "query",
-        label: row.query || "(未命名)",
+        label: queryText || "(未命名)",
         href,
         current: Number(row.clicks) || 0,
         previous: Number(row.clicksPrev) || 0,
@@ -719,7 +743,7 @@ const queryMovers = useMemo(() => {
     .slice(0, 5);
 
   return { up, down };
-}, [keywordSearchRows]);
+}, [keywordSearchRows, primaryDomain]);
 
   const top10CurrentCount = useMemo(() => {
     if (!baseAll.length) return 0;

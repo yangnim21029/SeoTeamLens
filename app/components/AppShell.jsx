@@ -94,8 +94,6 @@ function TopHeader({ projectId, setProjectId, projects, windowDays, setWindowDay
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
             <ListTree className="h-3.5 w-3.5" /> RankLens
           </div>
-          <h1 className="text-2xl font-semibold text-slate-900">URL Ranking · 30-Day Tracker</h1>
-          <p className="max-w-xl text-sm text-slate-500">快速檢查各 URL 聚合的 30 天名次變化（依最佳名次與趨勢）。</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <ProjectDropdown

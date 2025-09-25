@@ -31,24 +31,10 @@ export default function OverviewPage() {
   const { overviewData, windowDays } = useRankData();
 
   if (!overviewData) {
-    return (
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold text-slate-900">概覽</h1>
-        <p className="text-sm text-slate-500">尚無可用的統計資料。</p>
-      </div>
-    );
+    return <div className="text-sm text-slate-500">尚無可用的統計資料。</div>;
   }
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">整體概覽</h1>
-        <p className="text-sm text-slate-500">快速掌握站點在不同期間的排名、覆蓋率與關鍵字動態。</p>
-      </div>
-
-      <DashboardOverview data={overviewData} windowDays={windowDays} />
-    </div>
-  );
+  return <DashboardOverview data={overviewData} windowDays={windowDays} />;
 }
 
 function DashboardOverview({ data, windowDays }) {
@@ -257,19 +243,27 @@ function DashboardOverview({ data, windowDays }) {
             <img
               src={`https://www.google.com/s2/favicons?domain=${primaryDomain}&sz=64`}
               alt={primaryDomain}
-              className="h-7 w-7"
-              data-domain={primaryDomain}
+              className="max-h-10 max-w-10 object-contain"
+              data-domain={primaryDomain.split('.')[0].charAt(0).toUpperCase() + primaryDomain.split('.')[0].slice(1)}
             />
           ) : (
             "URL"
           )}
         />
         <SummaryCard
-          title="目標關鍵字排名"
+          title="目標關鍵字平均排名"
           value={avgRankDisplay}
           delta={avgDelta}
           description={`總計 ${data.totalKeywords.toLocaleString()} 個關鍵字，取最近 ${windowLabel} 平均排名`}
-          trend={data.trendSeries}
+          valueClassName={
+            data.avgRankCurrent == null 
+              ? "text-slate-500"
+              : data.avgRankCurrent >= 20
+                ? "text-red-500"
+                : data.avgRankCurrent >= 10
+                  ? "text-yellow-500"
+                  : "text-green-500"
+          }
         />
         <SummaryCard
           title={`近${windowLabel}競爭程度`}
@@ -384,7 +378,7 @@ function DashboardOverview({ data, windowDays }) {
                     <stop offset="95%" stopColor="#facc15" stopOpacity={0.8} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="3 3" />
+                <CartesianGrid stroke="rgba(148,163,184,0.2)" horizontal={true} vertical={false} />
                 <XAxis dataKey="date" stroke="rgba(71,85,105,0.6)" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis
                   yAxisId="impressions"
@@ -435,7 +429,7 @@ function DashboardOverview({ data, windowDays }) {
                     key={band.key}
                     x1={band.start}
                     x2={band.end}
-                    fill="rgba(148, 163, 184, 0.16)"
+                    fill="rgba(148, 163, 184, 0.15)"
                     stroke={undefined}
                     ifOverflow="extendDomain"
                   />
@@ -674,22 +668,22 @@ function SummaryCard({
   return (
     <div className="flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       {icon && (
-        <div className="flex h-16 items-center justify-center bg-slate-50 px-4">
+        <div className="flex h-24 items-center justify-center bg-white px-4 py-4 rounded-t-2xl mb-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm overflow-hidden">
               {typeof icon === "object" && icon?.type === "img"
                 ? icon
-                : <span className="text-lg font-semibold text-slate-600">{icon}</span>}
+                : <span className="text-xl font-semibold text-slate-600">{icon}</span>}
             </div>
             {typeof icon === "object" && icon?.props?.["data-domain"] && (
-              <div className="text-lg font-semibold text-slate-700">
+              <div className="text-2xl font-bold text-slate-700">
                 {icon.props["data-domain"]}
               </div>
             )}
           </div>
         </div>
       )}
-      <div className="flex flex-1 flex-col px-4 py-4">
+      <div className="flex flex-1 flex-col px-4 py-4 rounded-b-2xl border-t border-slate-200">
         <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</div>
         <div className="mt-6">
           <span className={`text-4xl font-semibold leading-none tracking-tight ${valueClassName || "text-slate-900"}`}>
@@ -737,26 +731,25 @@ function MoverList({ title, items, emptyLabel = "尚無資料", showUnit = true 
             {items.map((item, idx) => {
               const deltaLabel = item.delta > 0 ? `+${item.delta}` : item.delta;
               const unit = showUnit ? " 次" : "";
+              const currentValue = Number(item.current || 0);
+              const currentText = Number.isFinite(currentValue)
+                ? currentValue.toLocaleString()
+                : String(item.current ?? "—");
+              const currentDisplay = `${currentText}${showUnit ? unit : ""}`;
               const content = (
                 <>
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate font-medium text-slate-800">
-              {idx + 1}. {item.label}
-            </span>
-            <span className={`font-mono ${item.delta > 0 ? "text-emerald-500" : "text-rose-500"}`}>
-                      {deltaLabel}
-                      {unit}
-            </span>
-          </div>
-                  {item.subLabel && (
-                    <div className="mt-0.5 truncate text-[11px] text-slate-500">{item.subLabel}</div>
-                  )}
-                  {showUnit && (
-                    <div className="mt-1 flex justify-between text-[11px] text-slate-400">
-                      <span>目前 {Number(item.current || 0).toLocaleString()} 次</span>
-                      <span>上期 {Number(item.previous || 0).toLocaleString()} 次</span>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate font-medium text-slate-800">
+                      {idx + 1}. {item.label}
+                    </span>
+                    <span className="flex items-center gap-3 text-[11px] font-semibold text-slate-600">
+                      <span className="text-slate-500">{currentDisplay}</span>
+                      <span className={`font-mono ${item.delta > 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                        {deltaLabel}
+                        {unit}
+                      </span>
+                    </span>
+                  </div>
                 </>
               );
 
@@ -768,8 +761,8 @@ function MoverList({ title, items, emptyLabel = "尚無資料", showUnit = true 
                     <a
                       href={item.href}
                       className={`${itemClass} text-left`}
-                      target={item.type === "page" ? "_blank" : "_self"}
-                      rel={item.type === "page" ? "noreferrer" : undefined}
+                      target="_blank"
+                      rel="noreferrer"
                     >
                       {content}
                     </a>
