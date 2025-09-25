@@ -347,33 +347,48 @@ function DashboardOverview({ data, windowDays }) {
       </div>
 
       {chartData.some((row) => (row.impressions ?? row.clicks ?? row.ctrPercent) != null) && (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800 text-white shadow-sm">
-          <div className="flex flex-col gap-1 px-5 pt-5">
-            <span className="text-sm font-semibold text-slate-200">曝光量 / 點擊量 / CTR 趨勢</span>
-            <span className="text-xs text-slate-400">左軸顯示曝光與點擊，右軸為 CTR (%)，週末以灰底標示</span>
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+            <div>
+              <span className="text-sm font-semibold text-slate-800">曝光量 / 點擊量 / CTR 趨勢</span>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-slate-500">
+              <div className="flex items-center gap-1">
+                <div className="h-2 w-3 bg-yellow-400"></div>
+                <span>CTR (%)</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="h-2 w-3 bg-orange-500"></div>
+                <span>點擊量</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="h-2 w-3 bg-blue-400"></div>
+                <span>曝光量</span>
+              </div>
+            </div>
           </div>
-          <div className="h-48 w-full px-2 pb-4">
+          <div className="h-80 w-full px-2 pb-4">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 12, right: 24, bottom: 8, left: 12 }}>
+              <AreaChart data={chartData} margin={{ top: 24, right: 24, bottom: 12, left: 12 }}>
                 <defs>
                   <linearGradient id="areaImpressions" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.65} />
-                    <stop offset="95%" stopColor="#60a5fa" stopOpacity={0.05} />
+                    <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.9} />
+                    <stop offset="95%" stopColor="#60a5fa" stopOpacity={0.8} />
                   </linearGradient>
                   <linearGradient id="areaClicks" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#a855f7" stopOpacity={0.55} />
-                    <stop offset="95%" stopColor="#a855f7" stopOpacity={0.05} />
+                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.9} />
+                    <stop offset="95%" stopColor="#f97316" stopOpacity={0.8} />
                   </linearGradient>
                   <linearGradient id="areaCtr" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#facc15" stopOpacity={0.55} />
-                    <stop offset="95%" stopColor="#facc15" stopOpacity={0.05} />
+                    <stop offset="5%" stopColor="#facc15" stopOpacity={0.9} />
+                    <stop offset="95%" stopColor="#facc15" stopOpacity={0.8} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="rgba(255,255,255,0.12)" strokeDasharray="3 3" />
-                <XAxis dataKey="date" stroke="rgba(255,255,255,0.45)" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                <CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="3 3" />
+                <XAxis dataKey="date" stroke="rgba(71,85,105,0.6)" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis
                   yAxisId="impressions"
-                  stroke="rgba(255,255,255,0.45)"
+                  stroke="rgba(71,85,105,0.6)"
                   domain={impressionsDomain}
                   tick={{ fontSize: 11 }}
                   tickFormatter={(value) => (Number.isFinite(value) ? Number(value).toLocaleString() : value)}
@@ -381,7 +396,7 @@ function DashboardOverview({ data, windowDays }) {
                 <YAxis
                   yAxisId="clicks"
                   orientation="right"
-                  stroke="rgba(168,85,247,0.6)"
+                  stroke="rgba(249,115,22,0.8)"
                   domain={clicksDomain}
                   tick={{ fontSize: 10 }}
                   tickFormatter={(value) => (Number.isFinite(value) ? Number(value).toLocaleString() : value)}
@@ -389,11 +404,10 @@ function DashboardOverview({ data, windowDays }) {
                 <YAxis
                   yAxisId="percent"
                   orientation="right"
-                  stroke="rgba(255,255,255,0.25)"
+                  stroke="rgba(250,204,21,0.8)"
                   domain={percentDomain}
                   tickFormatter={(value) => `${value}%`}
                   tick={{ fontSize: 10 }}
-                  hide
                 />
                 <Tooltip
                   content={({ active, payload }) => {
@@ -404,7 +418,7 @@ function DashboardOverview({ data, windowDays }) {
                     const ctr = payload.find((item) => item.dataKey === "ctrPercent");
                     const weekday = row?.fullDate ? weekdayLabel(row.fullDate) : "";
                     return (
-                      <div className="rounded-md bg-white/90 px-3 py-2 text-xs text-slate-900 shadow">
+                      <div className="rounded-md bg-white px-3 py-2 text-xs text-slate-900 shadow-lg border border-slate-200">
                         <div className="font-semibold text-slate-700">
                           {row?.fullDate || ""}
                           {weekday && <span className="ml-1 text-[11px] text-slate-400">{weekday}</span>}
@@ -441,7 +455,7 @@ function DashboardOverview({ data, windowDays }) {
                   type="monotone"
                   dataKey="clicks"
                   name="點擊量"
-                  stroke="#a855f7"
+                  stroke="#f97316"
                   strokeWidth={1.5}
                   fill="url(#areaClicks)"
                   connectNulls
@@ -677,18 +691,20 @@ function SummaryCard({
       )}
       <div className="flex flex-1 flex-col px-4 py-4">
         <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</div>
-        <div className="mt-2">
-          <span className={`text-2xl font-semibold ${valueClassName || "text-slate-900"}`}>{value}</span>
+        <div className="mt-6">
+          <span className={`text-4xl font-semibold leading-none tracking-tight ${valueClassName || "text-slate-900"}`}>
+            {value}
+          </span>
         </div>
         {(delta?.label || delta?.helper) && (
-          <div className="mt-1 text-xs text-slate-500">
-            {delta?.label && <span className={`font-mono ${deltaTone}`}>{delta.label}</span>}
-            {delta?.helper && <span className="ml-2 text-slate-400">{delta.helper}</span>}
+          <div className="mt-4 text-xs font-semibold text-slate-500">
+            {delta?.label && <span className={`font-mono font-semibold ${deltaTone}`}>{delta.label}</span>}
+            {delta?.helper && <span className="ml-2 text-slate-500">{delta.helper}</span>}
           </div>
         )}
-        {description && <div className="mt-3 text-xs text-slate-500">{description}</div>}
+        {description && <div className="mt-5 text-xs font-semibold text-slate-600">{description}</div>}
         {trend && trend.length > 0 && (
-          <div className="mt-4">
+          <div className="mt-6">
             <Sparkline
               data={trend}
               secondaryData={secondaryTrend}

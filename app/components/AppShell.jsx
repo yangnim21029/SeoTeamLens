@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { LayoutDashboard, ListTree, RefreshCcw, Table2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { useRankData } from "../context/rank-data";
 
 const NAV_ITEMS = [
@@ -62,6 +62,7 @@ export default function AppShell({ children }) {
           <div className="mx-auto w-full max-w-7xl">{children}</div>
         </main>
       </div>
+      <LoadingOverlay active={loading} />
     </div>
   );
 }
@@ -189,3 +190,59 @@ const ProjectDropdown = forwardRef(function ProjectDropdown(
     </div>
   );
 });
+
+function LoadingOverlay({ active }) {
+  const petals = useMemo(() => Array.from({ length: 6 }, (_, idx) => idx), []);
+
+  return (
+    <AnimatePresence>
+      {active && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.25, ease: "easeOut" }}
+        >
+          <div className="absolute inset-0 bg-white/75 backdrop-blur-sm" />
+          <motion.div
+            className="relative z-10 flex flex-col items-center gap-6"
+            initial={{ scale: 0.96, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.96, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+          >
+            <div className="relative h-20 w-20">
+              {petals.map((idx) => {
+                const rotation = idx * 60;
+                return (
+                  <motion.span
+                    // `rotation` keeps each petal's transform stable across renders
+                    key={rotation}
+                    className="absolute left-1/2 top-1/2 h-8 w-[6px] -translate-x-1/2 -translate-y-full origin-[50%_95%] rounded-full bg-slate-400/50 shadow-[0_8px_16px_rgba(15,23,42,0.12)]"
+                    style={{ transform: `rotate(${rotation}deg)` }}
+                    animate={{ scaleY: [0.6, 1.3, 0.6], opacity: [0.35, 1, 0.35] }}
+                    transition={{ duration: 1.2, repeat: Infinity, delay: idx * 0.12, ease: "easeInOut" }}
+                  />
+                );
+              })}
+              <motion.span
+                className="absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/80 bg-white/90 shadow-[0_0_20px_rgba(148,163,184,0.45)]"
+                animate={{ scale: [0.92, 1.05, 0.92], opacity: [0.85, 1, 0.85] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <motion.span
+                className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/60"
+                animate={{ rotate: [0, 360] }}
+                transition={{ duration: 3.2, repeat: Infinity, ease: "linear" }}
+              />
+            </div>
+            <div className="text-sm font-medium tracking-wide text-slate-600">
+              正在整理最新資料…
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
