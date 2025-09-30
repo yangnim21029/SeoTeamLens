@@ -1,0 +1,95 @@
+import { sql } from "@vercel/postgres";
+
+const CACHE_TTL_MS = 60 * 1000;
+
+let cachedProjects = null;
+let cacheExpiresAt = 0;
+
+function extractRecords(json) {
+  if (Array.isArray(json)) {
+    return json.filter((item) => item && typeof item === "object" && !Array.isArray(item));
+  }
+  if (json && typeof json === "object") {
+    if (Array.isArray(json.rows)) {
+      return json.rows.filter((item) => item && typeof item === "object" && !Array.isArray(item));
+    }
+    if (Array.isArray(json.data)) {
+      return json.data.filter((item) => item && typeof item === "object" && !Array.isArray(item));
+    }
+  }
+  return [];
+}
+
+function parseProjectRow(row) {
+  const { sheet_name: sheetName, json_data: jsonData, last_updated: lastUpdated } = row;
+  let parsed = jsonData;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = null;
+    }
+  }
+  const records = extractRecords(parsed);
+  const meta = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed.meta ?? null : null;
+  const labelCandidate = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (typeof parsed.label === "string" && parsed.label.trim() ? parsed.label.trim() : null)
+    : null;
+  return {
+    id: sheetName,
+    label: labelCandidate || sheetName,
+    rows: records,
+    meta,
+    lastUpdated,
+  };
+}
+
+async function refreshCache() {
+  const { rows } = await sql`SELECT sheet_name, json_data, last_updated FROM synced_data`;
+  const projects = rows.map(parseProjectRow).filter((project) => Array.isArray(project.rows));
+  cachedProjects = projects;
+  cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+  return projects;
+}
+
+async function getProjectsInternal({ force = false } = {}) {
+  if (!force && cachedProjects && cacheExpiresAt > Date.now()) {
+    return cachedProjects;
+  }
+  return refreshCache();
+}
+
+export async function loadProjectSummaries() {
+  const projects = await getProjectsInternal();
+  return projects
+    .map(({ rows, lastUpdated, ...rest }) => ({
+      ...rest,
+      lastUpdated: lastUpdated ? new Date(lastUpdated).toISOString() : null,
+      rowCount: Array.isArray(rows) ? rows.length : 0,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+}
+
+export async function getProjectById(id) {
+  if (!id) return null;
+  let projects = await getProjectsInternal();
+  let match = projects.find((project) => project.id === id);
+  if (match) {
+    return {
+      ...match,
+      lastUpdated: match.lastUpdated ? new Date(match.lastUpdated).toISOString() : null,
+    };
+  }
+  projects = await getProjectsInternal({ force: true });
+  match = projects.find((project) => project.id === id);
+  if (!match) return null;
+  return {
+    ...match,
+    lastUpdated: match.lastUpdated ? new Date(match.lastUpdated).toISOString() : null,
+  };
+}
+
+export function invalidateProjectsCache() {
+  cachedProjects = null;
+  cacheExpiresAt = 0;
+}
