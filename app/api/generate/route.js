@@ -9,7 +9,9 @@ const DATA_DIR = path.join(APP_DIR, "app", "data");
 const DEFAULT_CSV = "SEO Work Allocation - HSHK 總表(更新中）.csv";
 const DEFAULT_SITE = "sc-domain:holidaysmart.io"; // HSHK
 const DEFAULT_DAYS = 21;
-const RANK_QUERY_API = process.env.RANK_QUERY_API || "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
+const RANK_QUERY_API =
+  process.env.RANK_QUERY_API ||
+  "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
 const MIN_IMPRESSIONS_FOR_TOP = 5;
 
 function parseIntOr(value, fallback) {
@@ -62,7 +64,9 @@ function parseCSV(text) {
 
 function cleanQueryForSql(original) {
   if (!original) return null;
-  const withoutCount = String(original).replace(/\(\d+\)/g, "").trim();
+  const withoutCount = String(original)
+    .replace(/\(\d+\)/g, "")
+    .trim();
   if (!withoutCount) return null;
   const spaceless = withoutCount.replace(/\s+/g, "");
   return { original: withoutCount, spaceless };
@@ -103,7 +107,8 @@ export async function GET(req) {
       if (!r || r.length < maxCol) continue;
       const pageUrl = r[pageUrlCol - 1];
       const queriesRaw = r[keywordsCol - 1];
-      if (typeof pageUrl !== "string" || !pageUrl.trim() || !queriesRaw) continue;
+      if (typeof pageUrl !== "string" || !pageUrl.trim() || !queriesRaw)
+        continue;
 
       const pageId = extractArticleId(pageUrl);
       if (!pageId) continue;
@@ -122,7 +127,11 @@ export async function GET(req) {
         cleanedForSql.push(`'${info.spaceless.replace(/'/g, "''")}'`);
         const key = `${pageId}||${info.spaceless}`;
         if (!reportData.has(key)) {
-          reportData.set(key, { page: pageUrl, query: info.original, positions: new Map() });
+          reportData.set(key, {
+            page: pageUrl,
+            query: info.original,
+            positions: new Map(),
+          });
         }
       }
       if (cleanedForSql.length) {
@@ -132,7 +141,10 @@ export async function GET(req) {
     }
 
     if (!whereConditions.length) {
-      return NextResponse.json({ error: "No valid conditions from CSV" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No valid conditions from CSV" },
+        { status: 400 },
+      );
     }
 
     // Build SQL
@@ -162,7 +174,7 @@ export async function GET(req) {
       const text = await res.text().catch(() => "");
       return NextResponse.json(
         { error: `Upstream error ${res.status}`, details: text.slice(0, 4000) },
-        { status: 502 }
+        { status: 502 },
       );
     }
 
@@ -170,9 +182,18 @@ export async function GET(req) {
     const rawResults = Array.isArray(data?.results) ? data.results : [];
     const results = rawResults.filter((row) => {
       const posVal = Number(row?.avg_position);
-      const impressions = Number(row?.impressions ?? row?.total_impressions ?? row?.sum_impressions ?? row?.impr);
+      const impressions = Number(
+        row?.impressions ??
+          row?.total_impressions ??
+          row?.sum_impressions ??
+          row?.impr,
+      );
       if (Number.isFinite(posVal) && Math.round(posVal) === 1) {
-        if (Number.isFinite(impressions) && impressions > 0 && impressions < MIN_IMPRESSIONS_FOR_TOP) {
+        if (
+          Number.isFinite(impressions) &&
+          impressions > 0 &&
+          impressions < MIN_IMPRESSIONS_FOR_TOP
+        ) {
           return false;
         }
       }
@@ -205,7 +226,11 @@ export async function GET(req) {
       const key = `${pageId}||${spaceless}`;
       if (!reportData.has(key)) {
         const canonical = canonicalUrlMap.get(pageId) || row.page;
-        reportData.set(key, { page: canonical, query: row.query, positions: new Map() });
+        reportData.set(key, {
+          page: canonical,
+          query: row.query,
+          positions: new Map(),
+        });
       }
       const d = new Date(dateVal);
       const yyyy = d.getUTCFullYear();
@@ -215,13 +240,16 @@ export async function GET(req) {
       if (!dateHeaderMap.has(label)) continue;
       const item = reportData.get(key);
       const pos = Number.parseFloat(row.avg_position);
-      if (Number.isFinite(pos)) item.positions.set(label, Number(pos.toFixed(2)));
+      if (Number.isFinite(pos))
+        item.positions.set(label, Number(pos.toFixed(2)));
     }
 
     // Prepare output table-like JSON
     const headers = ["Page", "Keyword", ...dateHeaders];
     const rowsOut = [];
-    for (const item of Array.from(reportData.values()).sort((a, b) => a.page.localeCompare(b.page))) {
+    for (const item of Array.from(reportData.values()).sort((a, b) =>
+      a.page.localeCompare(b.page),
+    )) {
       const row = { page: item.page, keyword: item.query, positions: {} };
       for (const d of dateHeaders) {
         if (item.positions.has(d)) row.positions[d] = item.positions.get(d);
@@ -237,7 +265,7 @@ export async function GET(req) {
         // Reject on Vercel since runtime FS is read-only
         return NextResponse.json(
           { error: "Save disabled on Vercel. Use a DB/KV or run locally." },
-          { status: 405 }
+          { status: 405 },
         );
       }
       await fs.mkdir(DATA_DIR, { recursive: true });

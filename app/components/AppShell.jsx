@@ -29,7 +29,9 @@ export default function AppShell({ children }) {
       <aside className="hidden w-16 shrink-0 border-r border-slate-200 bg-white/90 pt-6 sm:flex sm:flex-col sm:items-center sm:gap-4">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+          const active =
+            pathname === item.href ||
+            (item.href !== "/" && pathname.startsWith(item.href));
           return (
             <Link
               key={item.href}
@@ -41,8 +43,12 @@ export default function AppShell({ children }) {
               }`}
               title={item.label}
             >
-              {active && <span className="absolute inset-0 rounded-xl border border-white/80" />}
-              <Icon className={`relative h-5 w-5 ${active ? "text-white" : ""}`} />
+              {active && (
+                <span className="absolute inset-0 rounded-xl border border-white/80" />
+              )}
+              <Icon
+                className={`relative h-5 w-5 ${active ? "text-white" : ""}`}
+              />
             </Link>
           );
         })}
@@ -67,7 +73,16 @@ export default function AppShell({ children }) {
   );
 }
 
-function TopHeader({ projectId, setProjectId, projects, windowDays, setWindowDays, triggerRefresh, loading, activeProject }) {
+function TopHeader({
+  projectId,
+  setProjectId,
+  projects,
+  windowDays,
+  setWindowDays,
+  triggerRefresh,
+  loading,
+  activeProject,
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -129,7 +144,9 @@ function TopHeader({ projectId, setProjectId, projects, windowDays, setWindowDay
             title="刷新快取"
             aria-label="刷新快取"
           >
-            <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCcw
+              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+            />
           </button>
         </div>
       </div>
@@ -141,6 +158,15 @@ const ProjectDropdown = forwardRef(function ProjectDropdown(
   { open, setOpen, projectId, setProjectId, projects, activeProject },
   ref,
 ) {
+  const formatTimestamp = (value) => {
+    if (!value) return '未同步';
+    try {
+      return new Intl.DateTimeFormat('zh-TW', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
+    } catch {
+      return value;
+    }
+  };
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -150,9 +176,30 @@ const ProjectDropdown = forwardRef(function ProjectDropdown(
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span>{activeProject?.label || "專案"}</span>
-        <svg className={`h-4 w-4 transform transition ${open ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="none" aria-hidden="true">
-          <path d="M6 8L10 12L14 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <span className="flex flex-col text-left leading-tight">
+          <span>{activeProject?.label || "專案"}</span>
+          {activeProject && (
+            <span className="text-xs font-normal text-slate-400">
+              {formatTimestamp(activeProject.lastUpdated)}
+              {typeof activeProject.rowCount === 'number'
+                ? ` · ${activeProject.rowCount} 筆`
+                : ''}
+            </span>
+          )}
+        </span>
+        <svg
+          className={`h-4 w-4 transform transition ${open ? "rotate-180" : ""}`}
+          viewBox="0 0 20 20"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M6 8L10 12L14 8"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </svg>
       </button>
       <AnimatePresence>
@@ -174,12 +221,18 @@ const ProjectDropdown = forwardRef(function ProjectDropdown(
                   setOpen(false);
                 }}
                 className={`block w-full px-4 py-2 text-left text-sm transition ${
-                  projectId === p.id ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-50"
+                  projectId === p.id
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700 hover:bg-slate-50"
                 }`}
                 role="option"
                 aria-selected={projectId === p.id}
               >
-                {p.label}
+                <span className="block font-medium">{p.label}</span>
+                <span className="block text-xs font-normal opacity-80">
+                  {formatTimestamp(p.lastUpdated)}
+                  {typeof p.rowCount === 'number' ? ` · ${p.rowCount} 筆` : ''}
+                </span>
               </button>
             ))}
           </motion.div>
@@ -219,15 +272,30 @@ function LoadingOverlay({ active }) {
                     key={rotation}
                     className="absolute left-1/2 top-1/2 h-8 w-[6px] -translate-x-1/2 -translate-y-full origin-[50%_95%] rounded-full bg-slate-400/50 shadow-[0_8px_16px_rgba(15,23,42,0.12)]"
                     style={{ transform: `rotate(${rotation}deg)` }}
-                    animate={{ scaleY: [0.6, 1.3, 0.6], opacity: [0.35, 1, 0.35] }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: idx * 0.12, ease: "easeInOut" }}
+                    animate={{
+                      scaleY: [0.6, 1.3, 0.6],
+                      opacity: [0.35, 1, 0.35],
+                    }}
+                    transition={{
+                      duration: 1.2,
+                      repeat: Infinity,
+                      delay: idx * 0.12,
+                      ease: "easeInOut",
+                    }}
                   />
                 );
               })}
               <motion.span
                 className="absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/80 bg-white/90 shadow-[0_0_20px_rgba(148,163,184,0.45)]"
-                animate={{ scale: [0.92, 1.05, 0.92], opacity: [0.85, 1, 0.85] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                animate={{
+                  scale: [0.92, 1.05, 0.92],
+                  opacity: [0.85, 1, 0.85],
+                }}
+                transition={{
+                  duration: 1.5,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
               />
               <motion.span
                 className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/60"

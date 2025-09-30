@@ -1,64 +1,43 @@
 import { NextResponse } from "next/server";
-import path from "node:path";
-import fs from "node:fs/promises";
-
-const DATA_DIR = path.join(process.cwd(), "app", "data");
-
-function validateId(id) {
-  // allow a-z A-Z 0-9 _ - only
-  return typeof id === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(id);
-}
+import { getProjectById } from "@/app/lib/projects-store";
 
 export async function GET(_req, { params }) {
-  try {
-    const p = await params;
-    const { id } = p || {};
-    if (!validateId(id)) {
-      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    }
-    const filePath = path.join(DATA_DIR, `${id}.json`);
-    const content = await fs.readFile(filePath, "utf8");
-    // parse once to ensure valid JSON before returning
-    const json = JSON.parse(content);
-    return NextResponse.json(json, { status: 200 });
-  } catch (err) {
-    if (err && err.code === "ENOENT") {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-    return NextResponse.json({ error: "Failed to read file" }, { status: 500 });
-  }
-}
+  const p = await params;
+  const { id } = p || {};
 
-export async function POST(req, { params }) {
+  if (!id || typeof id !== "string" || !id.trim()) {
+    return NextResponse.json({ error: "Invalid ID." }, { status: 400 });
+  }
+
   try {
-    // Disallow writes on Vercel because the runtime filesystem is read-only
-    if (process.env.VERCEL) {
+    const project = await getProjectById(id.trim());
+    if (!project) {
       return NextResponse.json(
-        { error: "Read-only filesystem on Vercel runtime. Use a DB/KV or run locally to save." },
-        { status: 405 }
+        { error: `Data for '${id}' not found.` },
+        { status: 404 },
       );
     }
-    const p = await params;
-    const { id } = p || {};
-    if (!validateId(id)) {
-      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    }
-    // Ensure body is JSON
-    let body;
-    try {
-      body = await req.json();
-    } catch {
-      return NextResponse.json({ error: "Body must be valid JSON" }, { status: 400 });
-    }
 
-    // Ensure data directory exists (created by repo, but safe to mkdir)
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    const filePath = path.join(DATA_DIR, `${id}.json`);
-    const serialized = JSON.stringify(body, null, 2);
-    await fs.writeFile(filePath, serialized, "utf8");
-
-    return NextResponse.json({ ok: true, id }, { status: 200 });
-  } catch (_err) {
-    return NextResponse.json({ error: "Failed to write file" }, { status: 500 });
+    return NextResponse.json(
+      {
+        id: project.id,
+        label: project.label,
+        rows: project.rows,
+        meta: project.meta ?? null,
+        lastUpdated: project.lastUpdated ?? null,
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=30",
+        },
+      },
+    );
+  } catch (error) {
+    console.error("Failed to retrieve data from database:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error: Failed to retrieve data." },
+      { status: 500 },
+    );
   }
 }

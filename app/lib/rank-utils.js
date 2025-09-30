@@ -1,9 +1,12 @@
 export const MAX_VISIBLE_RANK = 40;
 export const MIN_IMPRESSIONS_FOR_TOP = 5;
 
-export const clampRank = (r) => (r == null ? null : Math.min(r, MAX_VISIBLE_RANK));
-export const fmtRank = (r) => (r == null || r > MAX_VISIBLE_RANK ? "N/A" : `#${r}`);
-export const safeRank = (v) => (v == null || v > MAX_VISIBLE_RANK ? MAX_VISIBLE_RANK + 1 : v);
+export const clampRank = (r) =>
+  r == null ? null : Math.min(r, MAX_VISIBLE_RANK);
+export const fmtRank = (r) =>
+  r == null || r > MAX_VISIBLE_RANK ? "N/A" : `#${r}`;
+export const safeRank = (v) =>
+  v == null || v > MAX_VISIBLE_RANK ? MAX_VISIBLE_RANK + 1 : v;
 export const latestDefinedRank = (series = []) => {
   for (let i = series.length - 1; i >= 0; i--) {
     const value = series[i];
@@ -33,14 +36,18 @@ export function mergeHistory(a = [], b = []) {
     const va = ai == null ? 120 : ai;
     const vb = bi == null ? 120 : bi;
     const best = Math.min(va, vb);
-    out[i] = (ai == null && bi == null) ? null : best;
+    out[i] = ai == null && bi == null ? null : best;
   }
   return out;
 }
 
 export function dedupeRows(rows) {
   const map = new Map();
-  const norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, "").trim();
+  const norm = (s) =>
+    String(s || "")
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .trim();
   rows.forEach((r) => {
     const key = `${norm(r.keyword)}__${norm(r.displayUrl)}`;
     if (!map.has(key)) {
@@ -73,8 +80,13 @@ export function fillInteriorGaps(series = []) {
       if (gapLen > 1) {
         for (let step = 1; step < gapLen; step++) {
           const ratio = step / gapLen;
-          const interpolated = Math.round(lastVal + (currentVal - lastVal) * ratio);
-          out[lastIdx + step] = Math.max(1, Math.min(MAX_VISIBLE_RANK, interpolated));
+          const interpolated = Math.round(
+            lastVal + (currentVal - lastVal) * ratio,
+          );
+          out[lastIdx + step] = Math.max(
+            1,
+            Math.min(MAX_VISIBLE_RANK, interpolated),
+          );
         }
       }
     }
@@ -107,7 +119,9 @@ export function fillExteriorGaps(series = []) {
 export function aggregateByUrl(rows, windowDays) {
   const map = new Map();
   rows.forEach((r) => {
-    const windowHistRaw = r.history.slice(-windowDays).map((v) => (v == null ? null : Math.min(v, MAX_VISIBLE_RANK)));
+    const windowHistRaw = r.history
+      .slice(-windowDays)
+      .map((v) => (v == null ? null : Math.min(v, MAX_VISIBLE_RANK)));
     const windowHist = fillExteriorGaps(fillInteriorGaps(windowHistRaw));
     const start = windowHist[0];
     const end = latestDefinedRank(windowHist);
@@ -132,9 +146,11 @@ export function aggregateByUrl(rows, windowDays) {
     });
     const agg = fillExteriorGaps(fillInteriorGaps(aggRaw));
 
-    const avgCurrentRaw = items.reduce((acc, it) => acc + safeRank(it.end), 0) / items.length;
+    const avgCurrentRaw =
+      items.reduce((acc, it) => acc + safeRank(it.end), 0) / items.length;
     const avgCurrentRounded = Math.round(avgCurrentRaw);
-    const avgCurrent = avgCurrentRounded > MAX_VISIBLE_RANK ? null : avgCurrentRounded;
+    const avgCurrent =
+      avgCurrentRounded > MAX_VISIBLE_RANK ? null : avgCurrentRounded;
     const improved = items.filter((it) => it.delta > 0).length;
     const declined = items.filter((it) => it.delta < 0).length;
     const inTop10 = items.filter((it) => it.end != null && it.end <= 10).length;
@@ -156,21 +172,29 @@ export function aggregateByUrl(rows, windowDays) {
 
 export function safeDecodeURL(u) {
   if (!u || typeof u !== "string") return u;
-  try { return decodeURI(u); } catch {}
-  try { return decodeURIComponent(u); } catch {}
+  try {
+    return decodeURI(u);
+  } catch {}
+  try {
+    return decodeURIComponent(u);
+  } catch {}
   return u;
 }
 
 export function buildRowsFromResults(results, days, requestedPairs = []) {
   const today = new Date();
-  const baseUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const baseUTC = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate(),
+  );
   const anchorUTC = baseUTC - 24 * 60 * 60 * 1000; // yesterday
   const dateIndex = new Map();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(anchorUTC);
     d.setUTCDate(d.getUTCDate() - i);
-    const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-    dateIndex.set(label, (days - 1) - i);
+    const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    dateIndex.set(label, days - 1 - i);
   }
 
   const map = new Map();
@@ -180,7 +204,11 @@ export function buildRowsFromResults(results, days, requestedPairs = []) {
     if (!page || !queryStr) continue;
     const key = `${page}||${queryStr}`;
     if (!map.has(key)) {
-      map.set(key, { keyword: queryStr, displayUrl: page, history: Array.from({ length: days }, () => null) });
+      map.set(key, {
+        keyword: queryStr,
+        displayUrl: page,
+        history: Array.from({ length: days }, () => null),
+      });
     }
   }
   for (const row of Array.isArray(results) ? results : []) {
@@ -188,16 +216,31 @@ export function buildRowsFromResults(results, days, requestedPairs = []) {
     const page = row.page;
     const queryStr = row.query;
     const pos = Number.parseFloat(row.avg_position);
-    const impressions = Number(row.impressions ?? row.total_impressions ?? row.sum_impressions ?? row.impr);
+    const impressions = Number(
+      row.impressions ??
+        row.total_impressions ??
+        row.sum_impressions ??
+        row.impr,
+    );
     if (!dateVal || !page || !queryStr || !Number.isFinite(pos)) continue;
-    if (Math.round(pos) === 1 && Number.isFinite(impressions) && impressions > 0 && impressions < MIN_IMPRESSIONS_FOR_TOP) continue;
+    if (
+      Math.round(pos) === 1 &&
+      Number.isFinite(impressions) &&
+      impressions > 0 &&
+      impressions < MIN_IMPRESSIONS_FOR_TOP
+    )
+      continue;
     const d = new Date(dateVal);
-    const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
     const idx = dateIndex.get(label);
     if (idx == null) continue;
     const key = `${page}||${queryStr}`;
     if (!map.has(key)) {
-      map.set(key, { keyword: queryStr, displayUrl: page, history: Array.from({ length: days }, () => null) });
+      map.set(key, {
+        keyword: queryStr,
+        displayUrl: page,
+        history: Array.from({ length: days }, () => null),
+      });
     }
     const rec = map.get(key);
     const rank = Math.max(1, Math.min(120, Math.round(pos)));
@@ -215,7 +258,11 @@ export function buildTrafficTimeline(results = [], days = 0) {
   if (!len) return [];
 
   const today = new Date();
-  const baseUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const baseUTC = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate(),
+  );
   const anchorUTC = baseUTC - 24 * 60 * 60 * 1000;
 
   const out = new Array(len);
@@ -227,7 +274,7 @@ export function buildTrafficTimeline(results = [], days = 0) {
     const month = String(d.getUTCMonth() + 1).padStart(2, "0");
     const day = String(d.getUTCDate()).padStart(2, "0");
     const fullDate = `${year}-${month}-${day}`;
-    const idx = (len - 1) - i;
+    const idx = len - 1 - i;
     out[idx] = {
       date: `${month}/${day}`,
       fullDate,
@@ -243,16 +290,23 @@ export function buildTrafficTimeline(results = [], days = 0) {
     if (!dateVal) return;
     const d = new Date(dateVal);
     if (Number.isNaN(d.getTime())) return;
-    const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
     const idx = dateIndex.get(label);
     if (idx == null) return;
 
-    const impressions = Number(row.impressions ?? row.total_impressions ?? row.sum_impressions ?? row.impr);
+    const impressions = Number(
+      row.impressions ??
+        row.total_impressions ??
+        row.sum_impressions ??
+        row.impr,
+    );
     if (Number.isFinite(impressions)) {
       out[idx].impressions += impressions;
     }
 
-    const clicks = Number(row.clicks ?? row.total_clicks ?? row.sum_clicks ?? row.click);
+    const clicks = Number(
+      row.clicks ?? row.total_clicks ?? row.sum_clicks ?? row.click,
+    );
     if (Number.isFinite(clicks)) {
       out[idx].clicks += clicks;
     }

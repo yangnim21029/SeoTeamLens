@@ -15,13 +15,16 @@ const geistMono = Geist_Mono({
 
 export const metadata = {
   title: "RankLens – Keyword Ranking Tracker",
-  description: "30-day keyword and URL ranking trends with filters and CSV export.",
+  description:
+    "30-day keyword and URL ranking trends with filters and CSV export.",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
         <RankDataProvider>
           <AppShell>{children}</AppShell>
         </RankDataProvider>

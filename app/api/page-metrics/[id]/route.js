@@ -1,74 +1,11 @@
 import { NextResponse } from "next/server";
 import { unstable_cache, revalidateTag } from "next/cache";
-import path from "node:path";
-import fs from "node:fs/promises";
 import crypto from "node:crypto";
 
-import { getProjectConfig } from "@/app/lib/project-config";
+import { getProjectById } from "@/app/lib/projects-store";
 
 const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
 const ONE_HOUR_SECONDS = 60 * 60;
-const APP_DIR = process.cwd();
-const DATA_DIR = path.join(APP_DIR, "app", "data");
-
-function parseIntOr(value, fallback) {
-  const n = Number.parseInt(String(value ?? "").trim(), 10);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function parseCSV(text) {
-  const rows = [];
-  let cur = "";
-  let row = [];
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        cur += ch;
-      }
-    } else {
-      if (ch === '"') {
-        inQuotes = true;
-      } else if (ch === ",") {
-        row.push(cur);
-        cur = "";
-      } else if (ch === "\n") {
-        row.push(cur);
-        rows.push(row);
-        row = [];
-        cur = "";
-      } else if (ch === "\r") {
-        // ignore
-      } else {
-        cur += ch;
-      }
-    }
-  }
-  row.push(cur);
-  rows.push(row);
-  return rows;
-}
-
-function parseTSV(text) {
-  const lines = text.split(/\r?\n/);
-  return lines.map((ln) => ln.split("\t"));
-}
-
-function parseSource(text) {
-  const firstLine = (text.match(/^[^\n\r]*/m) || [""])[0];
-  const tabCount = (firstLine.match(/\t/g) || []).length;
-  const commaCount = (firstLine.match(/,/g) || []).length;
-  if (tabCount > commaCount) return parseTSV(text);
-  return parseCSV(text);
-}
 
 function extractArticleId(url) {
   if (typeof url !== "string") return null;
@@ -81,93 +18,139 @@ function hashKey(obj) {
   return crypto.createHash("sha1").update(s).digest("hex").slice(0, 16);
 }
 
+function normalizeUrlCandidate(value) {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  const candidate = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : trimmed.startsWith("//")
+      ? `https:${trimmed}`
+      : `https://${trimmed}`;
+  try {
+    return new URL(candidate).toString();
+  } catch {
+    return null;
+  }
+}
+
+function getFieldValue(record, targetKey) {
+  if (!record || typeof record !== "object") return null;
+  const normalise = (input) => input.trim().toLowerCase().replace(/[_\s]+/g, "");
+  const desired = normalise(targetKey);
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof key !== "string") continue;
+    if (normalise(key) === desired) return value;
+  }
+  return null;
+}
+
+function normaliseString(value) {
+  if (value == null) return "";
+  return String(value).trim();
+}
+
+function deriveSiteFromRecords(records) {
+  for (const record of records) {
+    const urlValue = getFieldValue(record, "url");
+    const normalized = normalizeUrlCandidate(urlValue);
+    if (!normalized) continue;
+    try {
+      const url = new URL(normalized);
+      const host = url.hostname.replace(/^www\./i, "").toLowerCase();
+      if (host) return `sc-domain:${host}`;
+    } catch {
+      // ignore parse errors
+    }
+  }
+  return null;
+}
+
 export async function GET(req, { params }) {
   try {
     const url = new URL(req.url);
     const p = await params;
-    const id = p?.id || "default";
-    const siteParam = url.searchParams.get("site");
-    const days = parseIntOr(url.searchParams.get("days"), 30);
-    const refresh = url.searchParams.get("refresh") === "1";
-    const limit = parseIntOr(url.searchParams.get("limit"), 0);
-
-    if (!Number.isFinite(days) || days <= 0) {
-      return NextResponse.json({ error: "days must be a positive integer" }, { status: 400 });
+    const id = p?.id;
+    if (!id) {
+      return NextResponse.json({ error: "Missing project id" }, { status: 400 });
     }
 
-    const project = getProjectConfig(id);
+    const project = await getProjectById(id);
     if (!project) {
-      return NextResponse.json({ error: `Unknown project id: ${id}` }, { status: 404 });
+      return NextResponse.json(
+        { error: `Unknown project id: ${id}` },
+        { status: 404 },
+      );
     }
 
-    const fileParam = url.searchParams.get("file") || project.file;
-    const pageUrlCol = parseIntOr(url.searchParams.get("pageUrlCol"), project.pageUrlCol);
+    const siteOverride = url.searchParams.get("site");
+    const daysParam = Number.parseInt(String(url.searchParams.get("days") ?? "").trim(), 10);
+    const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 30;
+    const refresh = url.searchParams.get("refresh") === "1";
+    const limitParam = Number.parseInt(String(url.searchParams.get("limit") ?? "").trim(), 10);
+    const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 0;
 
-    if (!fileParam) {
-      return NextResponse.json({ error: "Missing file parameter" }, { status: 400 });
-    }
-    if (!Number.isFinite(pageUrlCol) || pageUrlCol <= 0) {
-      return NextResponse.json({ error: "Invalid column configuration" }, { status: 400 });
-    }
-
-    const csvPath = path.join(DATA_DIR, fileParam);
-    let csvText;
-    try {
-      csvText = await fs.readFile(csvPath, "utf8");
-    } catch {
-      return NextResponse.json({ error: `CSV not found: ${fileParam}` }, { status: 404 });
+    const records = Array.isArray(project.rows)
+      ? project.rows.filter((record) => record && typeof record === "object")
+      : [];
+    if (!records.length) {
+      return NextResponse.json({ error: "Project has no data rows" }, { status: 400 });
     }
 
-    const rows = parseSource(csvText);
-    if (!rows.length) {
-      return NextResponse.json({ error: "CSV empty" }, { status: 400 });
+    const derivedSite = siteOverride || deriveSiteFromRecords(records);
+    if (!derivedSite) {
+      return NextResponse.json(
+        { error: "Unable to derive site from data." },
+        { status: 400 },
+      );
     }
 
-    const dataRows = rows.slice(1);
     const whereConditions = [];
     const uniqueConditions = new Set();
     const canonicalUrlMap = new Map();
     const exactUrlMap = new Map();
 
-    for (const r of dataRows) {
-      if (!r || r.length < pageUrlCol) continue;
-      const pageUrl = r[pageUrlCol - 1];
-      if (typeof pageUrl !== "string") continue;
-      const trimmed = pageUrl.trim();
-      if (!trimmed) continue;
+    records.forEach((record) => {
+      const pageUrl = normaliseString(getFieldValue(record, "url"));
+      if (!pageUrl) return;
 
-      const pageId = extractArticleId(trimmed);
+      const pageId = extractArticleId(pageUrl);
       if (pageId) {
         const existing = canonicalUrlMap.get(pageId);
-        if (!existing || String(trimmed).length > String(existing).length) {
-          canonicalUrlMap.set(pageId, trimmed);
+        if (!existing || String(pageUrl).length > String(existing).length) {
+          canonicalUrlMap.set(pageId, pageUrl);
         }
         const condition = `(page LIKE '%${pageId}%')`;
         if (!uniqueConditions.has(condition)) {
           uniqueConditions.add(condition);
           whereConditions.push(condition);
         }
-        continue;
+        return;
       }
 
-      if (!exactUrlMap.has(trimmed)) {
-        const sanitized = trimmed.replace(/'/g, "''");
-        exactUrlMap.set(trimmed, sanitized);
+      if (!exactUrlMap.has(pageUrl)) {
+        const sanitized = pageUrl.replace(/'/g, "''");
+        exactUrlMap.set(pageUrl, sanitized);
         const condition = `(page = '${sanitized}')`;
         whereConditions.push(condition);
       }
-    }
+    });
 
     if (!whereConditions.length) {
-      return NextResponse.json({ error: "No valid conditions derived from CSV" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No valid conditions derived from data" },
+        { status: 400 },
+      );
     }
 
-    const targetPages = new Set([
-      ...Array.from(canonicalUrlMap.values()),
-      ...Array.from(exactUrlMap.keys()),
-    ].filter(Boolean));
+    const targetPages = new Set(
+      [
+        ...Array.from(canonicalUrlMap.values()),
+        ...Array.from(exactUrlMap.keys()),
+      ].filter(Boolean),
+    );
 
-    const combinedWhere = whereConditions.join(" OR \n        ");
+    const combinedWhere = whereConditions.join(" OR \\n        " );
     const cte = `
       WITH page_rows AS (
         SELECT
@@ -187,8 +170,9 @@ export async function GET(req, { params }) {
       )
     `;
 
-    const limitClause = limit && limit > 0
-      ? `WHERE page IN (
+    const limitClause =
+      limit > 0
+        ? `WHERE page IN (
           SELECT page
           FROM (
             SELECT
@@ -201,7 +185,7 @@ export async function GET(req, { params }) {
           ) ranked_pages
           WHERE rank_order <= ${limit}
         )`
-      : "";
+        : "";
 
     const sql = `
       ${cte}
@@ -211,8 +195,12 @@ export async function GET(req, { params }) {
       ORDER BY date ASC, impressions DESC NULLS LAST, page;
     `;
 
-    const site = siteParam || project.site || "sc-domain:holidaysmart.io";
-    const paramsHash = hashKey({ id, site, days, limit, file: fileParam, pageUrlCol });
+    const paramsHash = hashKey({
+      id,
+      site: derivedSite,
+      days,
+      limit,
+    });
     const tag = `page-metrics:${id}`;
     if (refresh) {
       revalidateTag(tag);
@@ -220,7 +208,7 @@ export async function GET(req, { params }) {
 
     const getData = unstable_cache(
       async () => {
-        const payload = { data_type: "hourly", site, sql: sql.trim() };
+        const payload = { data_type: "hourly", site: derivedSite, sql: sql.trim() };
         const res = await fetch(UPSTREAM, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -229,22 +217,34 @@ export async function GET(req, { params }) {
         });
         if (!res.ok) {
           const text = await res.text().catch(() => "");
-          throw new Error(`Upstream error ${res.status}: ${text.slice(0, 4000)}`);
+          throw new Error(
+            `Upstream error ${res.status}: ${text.slice(0, 4000)}`
+          );
         }
         const data = await res.json();
         const rows = Array.isArray(data?.results) ? data.results : [];
         const normalized = rows.map((row) => {
-          const impressions = Number(row.impressions ?? row.total_impressions ?? row.sum_impressions ?? row.impr);
-          const clicks = Number(row.clicks ?? row.total_clicks ?? row.sum_clicks ?? row.click);
-          const avgPosition = Number(row.avg_position ?? row.avg_pos ?? row.position);
-          const dateValue = row.date ?? row["CAST(date AS DATE)"] ?? row.dt ?? null;
+          const impressions = Number(
+            row.impressions ??
+              row.total_impressions ??
+              row.sum_impressions ??
+              row.impr
+          );
+          const clicks = Number(
+            row.clicks ?? row.total_clicks ?? row.sum_clicks ?? row.click
+          );
+          const avgPosition = Number(
+            row.avg_position ?? row.avg_pos ?? row.position
+          );
+          const dateValue =
+            row.date ?? row["CAST(date AS DATE)"] ?? row.dt ?? null;
           const rawPage = row.page ?? row.page_url ?? row.url ?? "";
           const pageId = extractArticleId(rawPage);
           const canonical = pageId
             ? canonicalUrlMap.get(pageId) || row.page
-            : (typeof rawPage === "string" && exactUrlMap.has(rawPage.trim())
-                ? rawPage.trim()
-                : row.page);
+            : typeof rawPage === "string" && exactUrlMap.has(rawPage.trim())
+              ? rawPage.trim()
+              : row.page;
           return {
             date: dateValue,
             page: canonical ?? row.page ?? row.page_url ?? row.url ?? null,
@@ -253,13 +253,18 @@ export async function GET(req, { params }) {
             avgPosition: Number.isFinite(avgPosition) ? avgPosition : null,
           };
         });
-        const uniquePages = new Set(normalized.map((row) => row.page).filter(Boolean)).size;
+        const uniquePages = new Set(
+          normalized.map((row) => row.page).filter(Boolean),
+        ).size;
         const meta = {
           rowCount: normalized.length,
           days,
           pages: uniquePages,
           conditions: whereConditions.length,
           targets: targetPages.size,
+          site: derivedSite,
+          sourceMeta: project.meta ?? null,
+          lastUpdated: project.lastUpdated ?? null,
         };
         return { ...data, results: normalized, meta };
       },
@@ -270,7 +275,9 @@ export async function GET(req, { params }) {
     const cached = await getData();
     return NextResponse.json(cached, {
       status: 200,
-      headers: { "Cache-Control": "s-maxage=3600, stale-while-revalidate=86400" },
+      headers: {
+        "Cache-Control": "s-maxage=3600, stale-while-revalidate=86400",
+      },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
