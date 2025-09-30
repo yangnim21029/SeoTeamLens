@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { unstable_cache, revalidateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import crypto from "node:crypto";
 
 import { getProjectById } from "@/app/lib/projects-store";
+import { createVercelCache, vercelFetch } from "@/app/lib/vercel-cache";
 
 const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
 const FOUR_HOUR_SECONDS = 4 * 60 * 60;
@@ -206,14 +207,13 @@ export async function GET(req, { params }) {
       revalidateTag(tag);
     }
 
-    const getData = unstable_cache(
+    const getData = createVercelCache(
       async () => {
         const payload = { data_type: "hourly", site: derivedSite, sql: sql.trim() };
-        const res = await fetch(UPSTREAM, {
+        const res = await vercelFetch(UPSTREAM, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
-          next: { revalidate: FOUR_HOUR_SECONDS },
         });
         if (!res.ok) {
           const text = await res.text().catch(() => "");
@@ -226,9 +226,9 @@ export async function GET(req, { params }) {
         const normalized = rows.map((row) => {
           const impressions = Number(
             row.impressions ??
-              row.total_impressions ??
-              row.sum_impressions ??
-              row.impr
+            row.total_impressions ??
+            row.sum_impressions ??
+            row.impr
           );
           const clicks = Number(
             row.clicks ?? row.total_clicks ?? row.sum_clicks ?? row.click
@@ -269,14 +269,23 @@ export async function GET(req, { params }) {
         return { ...data, results: normalized, meta };
       },
       ["page-metrics", id, paramsHash],
-      { revalidate: FOUR_HOUR_SECONDS, tags: [tag] },
+      { revalidate: FOUR_HOUR_SECONDS, tags: [tag] }
     );
 
+    const startTime = Date.now();
     const cached = await getData();
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    console.log(`[page-metrics] ${id} - Duration: ${duration}ms`);
+    console.log(`[page-metrics] Cache key: page-metrics:${id}:${paramsHash}`);
+
     return NextResponse.json(cached, {
       status: 200,
       headers: {
         "Cache-Control": "s-maxage=14400, stale-while-revalidate=86400",
+        "X-Cache-Duration": duration.toString(),
+        "X-Cache-Key": `page-metrics:${id}:${paramsHash.slice(0, 8)}`,
       },
     });
   } catch (err) {
@@ -286,3 +295,4 @@ export async function GET(req, { params }) {
 }
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";

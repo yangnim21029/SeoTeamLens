@@ -53,15 +53,27 @@ function refreshCache() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'User-Agent': 'GoogleAppsScript-CacheRefresh/1.0'
       },
-      payload: JSON.stringify(payload)
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true // 避免 4xx/5xx 錯誤拋出異常
     };
     
     console.log('發送請求到:', `${CONFIG.SITE_URL}/api/cache/refresh`);
     const response = UrlFetchApp.fetch(`${CONFIG.SITE_URL}/api/cache/refresh`, options);
-    const responseData = JSON.parse(response.getContentText());
+    const responseCode = response.getResponseCode();
+    const responseText = response.getContentText();
     
-    if (response.getResponseCode() === 200 && responseData.success) {
+    console.log(`HTTP 狀態碼: ${responseCode}`);
+    
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      throw new Error(`無法解析回應 JSON: ${responseText.slice(0, 200)}`);
+    }
+    
+    if (responseCode === 200 && responseData.success) {
       const endTime = new Date();
       const duration = Math.round((endTime - startTime) / 1000);
       
@@ -82,12 +94,14 @@ function refreshCache() {
       
       return responseData;
     } else {
-      throw new Error(`API 回應錯誤: ${responseData.error || '未知錯誤'}`);
+      const errorDetail = responseData.error || responseData.details || responseText;
+      throw new Error(`API 回應錯誤 (${responseCode}): ${errorDetail}`);
     }
     
   } catch (error) {
     const errorMessage = `❌ 快取刷新失敗: ${error.message}`;
     console.error(errorMessage);
+    console.error('完整錯誤:', error);
     
     if (CONFIG.NOTIFICATIONS.enabled) {
       sendNotification(errorMessage, 'error');
@@ -236,5 +250,89 @@ function getProjectList() {
   } catch (error) {
     console.error('獲取專案列表失敗:', error.message);
     return [];
+  }
+}
+
+/**
+ * 檢查 Vercel 快取系統狀態
+ */
+function checkCacheStatus() {
+  try {
+    console.log('檢查快取系統狀態...');
+    
+    const url = `${CONFIG.SITE_URL}/api/cache/status?secret=${CONFIG.SECRET}`;
+    const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    const responseCode = response.getResponseCode();
+    const data = JSON.parse(response.getContentText());
+    
+    if (responseCode === 200) {
+      console.log('✅ 快取系統狀態正常');
+      console.log('環境資訊:', data.environment);
+      console.log('是否為 Vercel:', data.environment.isVercel);
+      console.log('區域:', data.environment.region);
+      console.log('時間戳:', data.environment.timestamp);
+      return data;
+    } else {
+      console.error('❌ 快取系統狀態檢查失敗:', data.error);
+      return null;
+    }
+  } catch (error) {
+    console.error('檢查快取狀態時發生錯誤:', error.message);
+    return null;
+  }
+}
+
+/**
+ * 測試單一 API 的快取效果
+ */
+function testApiCache() {
+  const testProjectId = 'HSHK 總表(更新中）'; // 修改為你的測試專案 ID
+  const testDays = 7;
+  
+  console.log(`測試 API 快取效果 - 專案: ${testProjectId}, 天數: ${testDays}`);
+  
+  try {
+    const apiUrl = `${CONFIG.SITE_URL}/api/run-csv/${encodeURIComponent(testProjectId)}?days=${testDays}`;
+    
+    // 第一次請求
+    console.log('第一次請求...');
+    const start1 = new Date();
+    const response1 = UrlFetchApp.fetch(apiUrl, { muteHttpExceptions: true });
+    const end1 = new Date();
+    const duration1 = end1 - start1;
+    
+    console.log(`第一次請求耗時: ${duration1}ms`);
+    console.log('回應 headers:', Object.keys(response1.getHeaders()));
+    
+    // 等待 1 秒後第二次請求
+    Utilities.sleep(1000);
+    
+    // 第二次請求（應該命中快取）
+    console.log('第二次請求...');
+    const start2 = new Date();
+    const response2 = UrlFetchApp.fetch(apiUrl, { muteHttpExceptions: true });
+    const end2 = new Date();
+    const duration2 = end2 - start2;
+    
+    console.log(`第二次請求耗時: ${duration2}ms`);
+    
+    const speedup = duration1 / duration2;
+    console.log(`加速比: ${speedup.toFixed(2)}x`);
+    
+    if (speedup > 2) {
+      console.log('✅ 快取似乎正常工作！');
+    } else {
+      console.log('⚠️ 快取可能沒有生效，或者資料量較小');
+    }
+    
+    return {
+      firstRequest: duration1,
+      secondRequest: duration2,
+      speedup: speedup
+    };
+    
+  } catch (error) {
+    console.error('測試 API 快取時發生錯誤:', error.message);
+    return null;
   }
 }

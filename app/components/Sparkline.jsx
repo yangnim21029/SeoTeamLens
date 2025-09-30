@@ -152,8 +152,12 @@ const Sparkline = memo(function Sparkline({
   }, [secondaryFormatter, effectiveSecVariant]);
 
   if (!len || !series.length || !numericPrimary.length) {
-    // Nothing meaningful to draw
-    return <div className={className} />;
+    // Nothing meaningful to draw - show "no data" message
+    return (
+      <div className={`${className} flex items-center justify-center text-xs text-slate-400`}>
+        無資料
+      </div>
+    );
   }
 
   let yDomain;

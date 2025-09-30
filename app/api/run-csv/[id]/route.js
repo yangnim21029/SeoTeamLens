@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { unstable_cache, revalidateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import crypto from "node:crypto";
 import { getProjectById } from "@/app/lib/projects-store";
+import { createVercelCache, vercelFetch } from "@/app/lib/vercel-cache";
 
 // 常數定義
 const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
@@ -216,14 +217,13 @@ export async function GET(req, { params }) {
       revalidateTag(tag);
     }
 
-    const getData = unstable_cache(
+    const getData = createVercelCache(
       async () => {
       const payload = { data_type: "hourly", site: derivedSite, sql: sql.trim() };
-      const res = await fetch(UPSTREAM, {
+      const res = await vercelFetch(UPSTREAM, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
-        next: { revalidate: FOUR_HOUR_SECONDS },
       });
 
       if (!res.ok) {
@@ -268,16 +268,26 @@ export async function GET(req, { params }) {
       return { ...dataOut, requested, meta };
       },
       ["run-csv", id, paramsHash],
-      { revalidate: FOUR_HOUR_SECONDS, tags: [tag] },
+      { revalidate: FOUR_HOUR_SECONDS, tags: [tag] }
     );
 
+    const startTime = Date.now();
     const cached = await getData();
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    console.log(`[run-csv] ${id} - Duration: ${duration}ms`);
+    console.log(`[run-csv] Cache key: run-csv:${id}:${paramsHash}`);
     console.log("result keys:", Object.keys(cached));
     console.log("result.results length:", cached.results?.length);
-    console.log("first result:", cached.results?.[0]);
+    
     return NextResponse.json(cached, {
       status: 200,
-      headers: { "Cache-Control": "s-maxage=14400, stale-while-revalidate=86400" },
+      headers: { 
+        "Cache-Control": "s-maxage=14400, stale-while-revalidate=86400",
+        "X-Cache-Duration": duration.toString(),
+        "X-Cache-Key": `run-csv:${id}:${paramsHash.slice(0, 8)}`,
+      },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -287,3 +297,4 @@ export async function GET(req, { params }) {
 }
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";

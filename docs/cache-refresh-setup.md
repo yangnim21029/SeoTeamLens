@@ -123,6 +123,34 @@ NOTIFICATIONS: {
    - 檢查 Google Apps Script 的觸發器設定
    - 確認 Google 帳號有足夠權限
 
+4. **Vercel 快取問題**
+   - 檢查 Vercel 函數日誌
+   - 使用 `/api/cache/status?secret=your-key` 檢查快取狀態
+   - 查看回應 headers 中的 `X-Cache-Duration` 來判斷是否命中快取
+
+### Vercel 特定設定
+
+在 Vercel 上部署時，確保：
+
+1. **環境變數**：在 Vercel Dashboard 中設定 `CACHE_REFRESH_SECRET`
+2. **函數超時**：`vercel.json` 中已設定適當的超時時間
+3. **Runtime**：使用 Node.js runtime 而非 Edge Runtime
+4. **快取檢查**：使用 `GET /api/cache/status?secret=your-key` 檢查系統狀態
+5. **Google Apps Script**：免費版 Vercel 不支援 cron jobs，使用 Google Apps Script 定期觸發
+
+### Google Apps Script 額外功能
+
+```javascript
+// 檢查快取系統狀態
+checkCacheStatus()
+
+// 測試 API 快取效果
+testApiCache()
+
+// 完整的快取刷新
+refreshCache()
+```
+
 ### 測試指令
 
 ```javascript

@@ -144,7 +144,10 @@ export function aggregateByUrl(rows, windowDays) {
       });
       return seen ? best : null;
     });
-    const agg = fillExteriorGaps(fillInteriorGaps(aggRaw));
+    
+    // 檢查是否有任何真實資料
+    const hasAnyData = aggRaw.some(v => v !== null);
+    const agg = hasAnyData ? fillExteriorGaps(fillInteriorGaps(aggRaw)) : aggRaw;
 
     const avgCurrentRaw =
       items.reduce((acc, it) => acc + safeRank(it.end), 0) / items.length;
