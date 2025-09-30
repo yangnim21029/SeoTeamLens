@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   aggregateByUrl,
   buildRowsFromResults,
@@ -13,13 +13,9 @@ import {
   trendDelta,
   MAX_VISIBLE_RANK,
 } from "../lib/rank-utils";
+import { PROJECTS } from "../lib/project-config";
 
 const RankDataContext = createContext(null);
-
-const PROJECTS = [
-  { id: "hshk", label: "HSHK", file: "hshk_08.csv", site: "sc-domain:holidaysmart.io", keywordsCol: 14, pageUrlCol: 13 },
-  { id: "top", label: "TopPage", file: "topPage_08.csv", site: "sc-domain:pretty.presslogic.com", keywordsCol: 2, pageUrlCol: 1 },
-];
 
 const firstDefined = (series = []) => {
   for (const value of series) {
@@ -81,6 +77,13 @@ export function RankDataProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [sourceMeta, setSourceMeta] = useState(null);
+  const [includeKeywordMetrics, setIncludeKeywordMetrics] = useState(false);
+  const [keywordMetricsReady, setKeywordMetricsReady] = useState(false);
+  const [pageMetricsRequested, setPageMetricsRequested] = useState(false);
+  const [pageTrafficRows, setPageTrafficRows] = useState([]);
+  const [pageTrafficLoading, setPageTrafficLoading] = useState(false);
+  const [pageTrafficError, setPageTrafficError] = useState("");
+  const [pageMetricsMeta, setPageMetricsMeta] = useState(null);
 
   const activeProject = useMemo(
     () => PROJECTS.find((p) => p.id === projectId) || PROJECTS[0],
@@ -96,8 +99,18 @@ export function RankDataProvider({ children }) {
       try {
         setLoading(true);
         setError("");
+        setKeywordMetricsReady(false);
+        const params = [
+          `file=${encodeURIComponent(activeProject.file)}`,
+          `days=${fetchDays}`,
+          `site=${encodeURIComponent(activeProject.site)}`,
+          `keywordsCol=${activeProject.keywordsCol}`,
+          `pageUrlCol=${activeProject.pageUrlCol}`,
+          `includeMetrics=${includeKeywordMetrics ? "1" : "0"}`
+        ];
+        if (forceRefresh) params.push("refresh=1");
         const ts = forceRefresh ? `&_t=${Date.now()}` : "";
-        const url = `/api/run-csv/${projectId}?file=${encodeURIComponent(activeProject.file)}&days=${fetchDays}&site=${encodeURIComponent(activeProject.site)}&keywordsCol=${activeProject.keywordsCol}&pageUrlCol=${activeProject.pageUrlCol}${forceRefresh ? "&refresh=1" : ""}${ts}`;
+        const url = `/api/run-csv/${projectId}?${params.join("&")}${ts}`;
         const res = await fetch(url, { method: "GET", cache: "no-store" });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
@@ -111,12 +124,14 @@ export function RankDataProvider({ children }) {
           setRawResults(results);
           setRows(built);
           setRequestedMeta(Array.isArray(json?.requested) ? json.requested : []);
+          setKeywordMetricsReady(includeKeywordMetrics);
         }
       } catch (e) {
         if (!aborted) {
           setError(e?.message || String(e));
           setRawResults([]);
           setRequestedMeta([]);
+          setKeywordMetricsReady(false);
         }
       } finally {
         if (!aborted) {
@@ -129,7 +144,53 @@ export function RankDataProvider({ children }) {
     return () => {
       aborted = true;
     };
-  }, [projectId, activeProject.file, activeProject.site, activeProject.keywordsCol, activeProject.pageUrlCol, windowDays, fetchDays, forceRefresh]);
+  }, [projectId, activeProject.file, activeProject.site, activeProject.keywordsCol, activeProject.pageUrlCol, windowDays, fetchDays, includeKeywordMetrics, forceRefresh]);
+
+  useEffect(() => {
+    if (!pageMetricsRequested && !forceRefresh) {
+      return;
+    }
+    let aborted = false;
+    async function fetchPageMetrics() {
+      try {
+        setPageTrafficLoading(true);
+        setPageTrafficError("");
+        const params = [
+          `site=${encodeURIComponent(activeProject.site)}`,
+          `days=${fetchDays}`
+        ];
+        if (forceRefresh) params.push("refresh=1");
+        const ts = forceRefresh ? `&_t=${Date.now()}` : "";
+        const url = `/api/page-metrics/${projectId}?${params.join("&")}${ts}`;
+        const res = await fetch(url, { method: "GET", cache: "no-store" });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(`Upstream ${res.status}: ${txt.slice(0, 200)}`);
+        }
+        const json = await res.json();
+        const results = Array.isArray(json?.results) ? json.results : [];
+        if (!aborted) {
+          setPageTrafficRows(results);
+          setPageMetricsMeta(json?.meta || null);
+        }
+      } catch (err) {
+        if (!aborted) {
+          setPageTrafficError(err?.message || String(err));
+          setPageTrafficRows([]);
+          setPageMetricsMeta(null);
+        }
+      } finally {
+        if (!aborted) {
+          setPageTrafficLoading(false);
+        }
+      }
+    }
+
+    fetchPageMetrics();
+    return () => {
+      aborted = true;
+    };
+  }, [pageMetricsRequested, projectId, activeProject.site, fetchDays, forceRefresh]);
 
   useEffect(() => {
     if (!isMounted.current) {
@@ -142,6 +203,10 @@ export function RankDataProvider({ children }) {
       setRawResults([]);
       setSourceMeta(null);
       setRequestedMeta([]);
+      setKeywordMetricsReady(false);
+      setPageTrafficRows([]);
+      setPageMetricsMeta(null);
+      setPageTrafficError("");
       prevProjectId.current = projectId;
     }
   }, [projectId]);
@@ -216,7 +281,8 @@ export function RankDataProvider({ children }) {
   const timeline = timelineCurrent;
 
   const hasPreviousWindow = timelinePrevious.length === windowDays;
-  const trafficTimelineFull = useMemo(() => buildTrafficTimeline(rawResults, fetchDays), [rawResults, fetchDays]);
+  const trafficSource = pageTrafficRows.length ? pageTrafficRows : rawResults;
+  const trafficTimelineFull = useMemo(() => buildTrafficTimeline(trafficSource, fetchDays), [trafficSource, fetchDays]);
   const trafficTimeline = useMemo(
     () => trafficTimelineFull.slice(-windowDays),
     [trafficTimelineFull, windowDays],
@@ -553,15 +619,17 @@ const keywordAggregates = useMemo(() => {
 const pageTrafficAggregates = useMemo(() => {
   const current = new Map();
   const previous = new Map();
+  const source = pageTrafficRows.length ? pageTrafficRows : rawResults;
 
-  rawResults.forEach((row) => {
+  source.forEach((row) => {
     if (!row) return;
     const dateVal = row?.["CAST(date AS DATE)"] || row?.date || row?.dt;
-    const clicks = Number(row?.clicks ?? row?.total_clicks ?? row?.sum_clicks ?? row?.click);
-    if (!dateVal || !Number.isFinite(clicks) || clicks === 0) return;
+    if (!dateVal) return;
     const dateObj = new Date(dateVal);
     if (Number.isNaN(dateObj.getTime())) return;
     const label = `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth() + 1).padStart(2, "0")}-${String(dateObj.getUTCDate()).padStart(2, "0")}`;
+    const clicks = Number(row?.clicks ?? row?.total_clicks ?? row?.sum_clicks ?? row?.click);
+    if (!Number.isFinite(clicks) || clicks === 0) return;
     const urlRaw = row?.page || row?.page_url || row?.displayUrl || row?.url;
     if (!urlRaw) return;
     const decoded = safeDecodeURL(urlRaw);
@@ -573,7 +641,7 @@ const pageTrafficAggregates = useMemo(() => {
   });
 
   return { current, previous };
-}, [rawResults, currentDateSet, previousDateSet]);
+}, [pageTrafficRows, rawResults, currentDateSet, previousDateSet]);
 
 const keywordSearchRows = useMemo(() => {
   const keys = new Set([
@@ -863,6 +931,13 @@ const queryMovers = useMemo(() => {
     crossWindowMovement,
   ]);
 
+  const ensureOverviewMetrics = useCallback(() => {
+    setPageMetricsRequested(true);
+    setIncludeKeywordMetrics(true);
+  }, []);
+
+  const pageMetricsReady = pageTrafficRows.length > 0;
+
   const value = useMemo(() => ({
     projects: PROJECTS,
     projectId,
@@ -879,6 +954,14 @@ const queryMovers = useMemo(() => {
     overviewData,
     activeProject,
     requestedMeta,
+    ensureOverviewMetrics,
+    keywordMetricsReady,
+    includeKeywordMetrics,
+    pageMetricsReady,
+    pageMetricsRequested,
+    pageTrafficLoading,
+    pageTrafficError,
+    pageMetricsMeta,
   }), [
     projectId,
     windowDays,
@@ -891,6 +974,14 @@ const queryMovers = useMemo(() => {
     overviewData,
     activeProject,
     requestedMeta,
+    ensureOverviewMetrics,
+    keywordMetricsReady,
+    includeKeywordMetrics,
+    pageMetricsReady,
+    pageMetricsRequested,
+    pageTrafficLoading,
+    pageTrafficError,
+    pageMetricsMeta,
   ]);
 
   return (
