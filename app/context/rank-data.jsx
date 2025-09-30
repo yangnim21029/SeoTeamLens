@@ -23,6 +23,7 @@ import {
 } from "../lib/rank-utils";
 
 const RankDataContext = createContext(null);
+const LAST_PROJECT_STORAGE_KEY = "ranklens:last-project-id";
 
 const firstDefined = (series = []) => {
   for (const value of series) {
@@ -104,10 +105,11 @@ export function RankDataProvider({ children }) {
 
   const projectIdRef = useRef("");
   const projectsLoadedRef = useRef(false);
+  const initialProjectIdRef = useRef("");
 
   const activeProject = useMemo(() => {
     if (!projects.length) return null;
-    return projects.find((p) => p.id === projectId) || projects[0] || null;
+    return projects.find((p) => p.id === projectId) || null;
   }, [projects, projectId]);
   const fetchDays = Math.max(windowDays * 2, windowDays);
   const isMounted = useRef(false);
@@ -115,6 +117,21 @@ export function RankDataProvider({ children }) {
 
   useEffect(() => {
     projectIdRef.current = projectId;
+  }, [projectId]);
+
+  useEffect(() => {
+    // 預設不載入任何儲存的項目，讓用戶主動選擇
+    if (typeof window === "undefined") return;
+    // 移除自動載入邏輯，讓下拉選單預設為空
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (projectId) {
+      window.localStorage.setItem(LAST_PROJECT_STORAGE_KEY, projectId);
+    } else {
+      window.localStorage.removeItem(LAST_PROJECT_STORAGE_KEY);
+    }
   }, [projectId]);
 
   useEffect(() => {
@@ -181,14 +198,10 @@ export function RankDataProvider({ children }) {
 
         setError("");
         setProjects(normalized);
-        const firstId = normalized[0]?.id ?? "";
-        if (!projectIdRef.current && firstId) {
-          projectIdRef.current = firstId;
-          setProjectId(firstId);
-        } else if (!normalized.some((proj) => proj.id === projectIdRef.current) && firstId) {
-          projectIdRef.current = firstId;
-          setProjectId(firstId);
-        }
+        // 預設不選擇任何項目，讓用戶主動選擇
+        projectIdRef.current = "";
+        setProjectId("");
+        initialProjectIdRef.current = "";
       } catch (err) {
         console.error("Failed to load projects from database:", err);
         if (!aborted) {
@@ -214,38 +227,82 @@ export function RankDataProvider({ children }) {
       setRequestedMeta([]);
       setSourceMeta(null);
       setKeywordMetricsReady(false);
+      setPageTrafficRows([]);
+      setPageMetricsMeta(null);
+      setPageTrafficError("");
       return;
     }
     let aborted = false;
-    async function fetchData() {
+    async function fetchAllData() {
       try {
         setLoading(true);
+        setPageTrafficLoading(true);
         setError("");
+        setPageTrafficError("");
         setKeywordMetricsReady(false);
-        const params = [`days=${fetchDays}`, `includeMetrics=${includeKeywordMetrics ? "1" : "0"}`];
-        if (forceRefresh) params.push("refresh=1");
+        
         const ts = forceRefresh ? `&_t=${Date.now()}` : "";
-        const url = `/api/run-csv/${projectId}?${params.join("&")}${ts}`;
-        const res = await fetch(url, { method: "GET", cache: "no-store" });
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          throw new Error(`Upstream ${res.status}: ${txt.slice(0, 200)}`);
+        
+        // 準備兩個 API 的參數
+        const runCsvParams = [`days=${fetchDays}`, `includeMetrics=${includeKeywordMetrics ? "1" : "0"}`];
+        if (forceRefresh) runCsvParams.push("refresh=1");
+        const runCsvUrl = `/api/run-csv/${projectId}?${runCsvParams.join("&")}${ts}`;
+        
+        const pageMetricsParams = [`days=${fetchDays}`];
+        if (forceRefresh) pageMetricsParams.push("refresh=1");
+        const pageMetricsUrl = `/api/page-metrics/${projectId}?${pageMetricsParams.join("&")}${ts}`;
+        
+        // 並行調用兩個 API
+        const [runCsvResponse, pageMetricsResponse] = await Promise.all([
+          fetch(runCsvUrl, { method: "GET", cache: "no-store" }),
+          pageMetricsRequested || forceRefresh 
+            ? fetch(pageMetricsUrl, { method: "GET", cache: "no-store" })
+            : Promise.resolve(null)
+        ]);
+        
+        // 處理 run-csv API 回應
+        if (!runCsvResponse.ok) {
+          const txt = await runCsvResponse.text().catch(() => "");
+          throw new Error(`Run-CSV API ${runCsvResponse.status}: ${txt.slice(0, 200)}`);
         }
-        const json = await res.json();
-        const results = Array.isArray(json?.results) ? json.results : [];
+        const runCsvJson = await runCsvResponse.json();
+        const results = Array.isArray(runCsvJson?.results) ? runCsvJson.results : [];
         const built = buildRowsFromResults(
           results,
           fetchDays,
-          Array.isArray(json?.requested) ? json.requested : [],
+          Array.isArray(runCsvJson?.requested) ? runCsvJson.requested : [],
         );
+        
+        // 處理 page-metrics API 回應
+        let pageMetricsResults = [];
+        let pageMetricsMeta = null;
+        let pageMetricsError = "";
+        
+        if (pageMetricsResponse) {
+          if (!pageMetricsResponse.ok) {
+            const txt = await pageMetricsResponse.text().catch(() => "");
+            pageMetricsError = `Page-Metrics API ${pageMetricsResponse.status}: ${txt.slice(0, 200)}`;
+          } else {
+            const pageMetricsJson = await pageMetricsResponse.json();
+            pageMetricsResults = Array.isArray(pageMetricsJson?.results) ? pageMetricsJson.results : [];
+            pageMetricsMeta = pageMetricsJson?.meta || null;
+          }
+        }
+        
         if (!aborted) {
-          setSourceMeta(json?.meta || null);
+          // 設定 run-csv 資料
+          setSourceMeta(runCsvJson?.meta || null);
           setRawResults(results);
           setRows(built);
           setRequestedMeta(
-            Array.isArray(json?.requested) ? json.requested : [],
+            Array.isArray(runCsvJson?.requested) ? runCsvJson.requested : [],
           );
           setKeywordMetricsReady(includeKeywordMetrics);
+          
+          // 設定 page-metrics 資料
+          setPageTrafficRows(pageMetricsResults);
+          setPageMetricsMeta(pageMetricsMeta);
+          setPageTrafficError(pageMetricsError);
         }
       } catch (e) {
         if (!aborted) {
@@ -253,15 +310,18 @@ export function RankDataProvider({ children }) {
           setRawResults([]);
           setRequestedMeta([]);
           setKeywordMetricsReady(false);
+          setPageTrafficRows([]);
+          setPageMetricsMeta(null);
         }
       } finally {
         if (!aborted) {
           setLoading(false);
+          setPageTrafficLoading(false);
           if (forceRefresh) setForceRefresh(false);
         }
       }
     }
-    fetchData();
+    fetchAllData();
     return () => {
       aborted = true;
     };
@@ -271,56 +331,8 @@ export function RankDataProvider({ children }) {
     fetchDays,
     includeKeywordMetrics,
     forceRefresh,
+    pageMetricsRequested,
   ]);
-
-  useEffect(() => {
-    if (!pageMetricsRequested && !forceRefresh) {
-      return;
-    }
-    if (!projectId) {
-      setPageTrafficRows([]);
-      setPageMetricsMeta(null);
-      setPageTrafficError("");
-      return;
-    }
-    let aborted = false;
-    async function fetchPageMetrics() {
-      try {
-        setPageTrafficLoading(true);
-        setPageTrafficError("");
-        const params = [`days=${fetchDays}`];
-        if (forceRefresh) params.push("refresh=1");
-        const ts = forceRefresh ? `&_t=${Date.now()}` : "";
-        const url = `/api/page-metrics/${projectId}?${params.join("&")}${ts}`;
-        const res = await fetch(url, { method: "GET", cache: "no-store" });
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          throw new Error(`Upstream ${res.status}: ${txt.slice(0, 200)}`);
-        }
-        const json = await res.json();
-        const results = Array.isArray(json?.results) ? json.results : [];
-        if (!aborted) {
-          setPageTrafficRows(results);
-          setPageMetricsMeta(json?.meta || null);
-        }
-      } catch (err) {
-        if (!aborted) {
-          setPageTrafficError(err?.message || String(err));
-          setPageTrafficRows([]);
-          setPageMetricsMeta(null);
-        }
-      } finally {
-        if (!aborted) {
-          setPageTrafficLoading(false);
-        }
-      }
-    }
-
-    fetchPageMetrics();
-    return () => {
-      aborted = true;
-    };
-  }, [pageMetricsRequested, projectId, fetchDays, forceRefresh]);
 
   useEffect(() => {
     if (!isMounted.current) {

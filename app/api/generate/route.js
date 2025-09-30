@@ -135,7 +135,7 @@ export async function GET(req) {
         }
       }
       if (cleanedForSql.length) {
-        const cond = `(page LIKE '%${pageId}%' AND REGEXP_REPLACE(query, '\\s+', '', 'g') IN (${cleanedForSql.join(", ")}))`;
+        const cond = `(page LIKE '%${pageId}%' AND REGEXP_REPLACE(query, '\\s+', '') IN (${cleanedForSql.join(", ")}))`;
         whereConditions.push(cond);
       }
     }
@@ -151,7 +151,7 @@ export async function GET(req) {
     const combinedWhere = whereConditions.join(" OR \n        ");
     const sql = `
       SELECT date::DATE, query, page, AVG(position) AS avg_position, SUM(impressions) AS impressions
-      FROM {site_hourly}
+      FROM read_parquet({site_hourly})
       WHERE date::DATE >= CURRENT_DATE - INTERVAL '${days} days'
       AND date::DATE < CURRENT_DATE
       AND page NOT LIKE '%#%'

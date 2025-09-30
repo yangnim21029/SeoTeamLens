@@ -194,7 +194,7 @@ export async function GET(req, { params }) {
         }
       }
       if (cleanedForSql.length) {
-        const cond = `(page LIKE '%${pageId}%' AND REGEXP_REPLACE(query, '\\s+', '', 'g') IN (${cleanedForSql.join(", ")}))`;
+        const cond = `(page LIKE '%${pageId}%' AND REGEXP_REPLACE(query, '\\s+', '') IN (${cleanedForSql.join(", ")}))`;
         whereConditions.push(cond);
       }
     }
@@ -219,7 +219,7 @@ export async function GET(req, { params }) {
         query,
         page,
         AVG(position) AS avg_position${metricsSql}
-      FROM {site_hourly}
+      FROM read_parquet({site_hourly})
       WHERE date::DATE >= CURRENT_DATE - INTERVAL '${days} days'
         AND date::DATE < CURRENT_DATE
         AND page NOT LIKE '%#%'

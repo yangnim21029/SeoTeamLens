@@ -200,7 +200,7 @@ export async function GET(req, { params }) {
           AVG(position) AS avg_position,
           SUM(impressions) AS impressions,
           SUM(clicks) AS clicks
-        FROM {site_hourly}
+        FROM read_parquet({site_hourly})
         WHERE date::DATE >= CURRENT_DATE - INTERVAL '${days} days'
           AND date::DATE < CURRENT_DATE
           AND page NOT LIKE '%#%'

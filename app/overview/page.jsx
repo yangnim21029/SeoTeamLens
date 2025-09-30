@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useTransition } from "react";
 import {
   Area,
   AreaChart,
@@ -43,11 +43,25 @@ export default function OverviewPage() {
     pageTrafficLoading,
     pageTrafficError,
     keywordMetricsReady,
+    activeProject,
   } = useRankData();
 
+  // 使用 useTransition 來優化頁面切換
+  const [isPending, startTransition] = useTransition();
+
   useEffect(() => {
-    ensureOverviewMetrics();
+    startTransition(() => {
+      ensureOverviewMetrics();
+    });
   }, [ensureOverviewMetrics]);
+
+  if (!activeProject) {
+    return (
+      <div className="text-sm text-slate-500">
+        請先選擇專案以載入統計資料。
+      </div>
+    );
+  }
 
   if (pageTrafficError) {
     return (
@@ -55,8 +69,8 @@ export default function OverviewPage() {
     );
   }
 
-  if (!pageMetricsReady) {
-    if (pageTrafficLoading || !pageMetricsRequested) {
+  if (!pageMetricsReady || isPending) {
+    if (pageTrafficLoading || !pageMetricsRequested || isPending) {
       return <div className="text-sm text-slate-500">載入中…</div>;
     }
     return <div className="text-sm text-slate-500">尚無可用的統計資料。</div>;
@@ -75,7 +89,7 @@ export default function OverviewPage() {
   );
 }
 
-function DashboardOverview({ data, windowDays, keywordMetricsReady }) {
+const DashboardOverview = React.memo(function DashboardOverview({ data, windowDays, keywordMetricsReady }) {
   const [showComparison, setShowComparison] = useState(false);
   const windowLabel = Number.isFinite(windowDays)
     ? `${windowDays.toLocaleString()} 天`
@@ -934,7 +948,7 @@ function DashboardOverview({ data, windowDays, keywordMetricsReady }) {
       </div>
     </div>
   );
-}
+});
 
 function SummaryCard({
   title,

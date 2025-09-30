@@ -177,7 +177,7 @@ const ProjectDropdown = forwardRef(function ProjectDropdown(
         aria-expanded={open}
       >
         <span className="flex flex-col text-left leading-tight">
-          <span>{activeProject?.label || "專案"}</span>
+          <span>{activeProject?.label || "選擇專案"}</span>
           {activeProject && (
             <span className="text-xs font-normal text-slate-400">
               {formatTimestamp(activeProject.lastUpdated)}

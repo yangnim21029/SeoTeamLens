@@ -20,16 +20,27 @@ function extractRecords(json) {
   return [];
 }
 
-function parseProjectRow(row) {
-  const { sheet_name: sheetName, json_data: jsonData, last_updated: lastUpdated } = row;
-  let parsed = jsonData;
-  if (typeof parsed === "string") {
+function sanitizeAndParseJson(raw) {
+  if (typeof raw !== "string") return raw;
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    const sanitized = raw.replace(/[\u0000-\u001F]/g, (char) => {
+      const code = char.charCodeAt(0).toString(16).padStart(4, "0");
+      return `\\u${code}`;
+    });
     try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      parsed = null;
+      return JSON.parse(sanitized);
+    } catch (finalError) {
+      console.error("Failed to parse project json_data", finalError);
+      return null;
     }
   }
+}
+
+function parseProjectRow(row) {
+  const { sheet_name: sheetName, json_data: jsonData, last_updated: lastUpdated } = row;
+  const parsed = sanitizeAndParseJson(jsonData);
   const records = extractRecords(parsed);
   const meta = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed.meta ?? null : null;
   const labelCandidate = parsed && typeof parsed === "object" && !Array.isArray(parsed)

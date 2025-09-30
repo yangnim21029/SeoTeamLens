@@ -150,7 +150,7 @@ export async function GET(req, { params }) {
       ].filter(Boolean),
     );
 
-    const combinedWhere = whereConditions.join(" OR \\n        " );
+    const combinedWhere = whereConditions.join(" OR ");
     const cte = `
       WITH page_rows AS (
         SELECT

@@ -182,7 +182,7 @@ function runReportGenerator(config) {
   const combinedWhereClause = whereConditions.join(" OR \n    ");
   const sql = `
       SELECT date::DATE, query, page, AVG(position) AS avg_position
-      FROM {site_hourly}
+      FROM read_parquet({site_hourly})
       WHERE date::DATE >= CURRENT_DATE - INTERVAL '21 days'
       AND (
         ${combinedWhereClause}
