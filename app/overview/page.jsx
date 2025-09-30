@@ -239,17 +239,17 @@ const DashboardOverview = React.memo(function DashboardOverview({ data, windowDa
 
         const impressions = parseMetric(
           point.impressions ??
-            point.totalImpressions ??
-            point.sumImpressions ??
-            point.impressionsCurrent ??
-            null,
+          point.totalImpressions ??
+          point.sumImpressions ??
+          point.impressionsCurrent ??
+          null,
         );
         const clicks = parseMetric(
           point.clicks ??
-            point.totalClicks ??
-            point.sumClicks ??
-            point.clicksCurrent ??
-            null,
+          point.totalClicks ??
+          point.sumClicks ??
+          point.clicksCurrent ??
+          null,
         );
 
         let ctrPercent = null;
@@ -493,211 +493,211 @@ const DashboardOverview = React.memo(function DashboardOverview({ data, windowDa
       {chartData.some(
         (row) => (row.impressions ?? row.clicks ?? row.ctrPercent) != null,
       ) && (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-            <div>
-              <span className="text-sm font-semibold text-slate-800">
-                曝光量 / 點擊量 / CTR 趨勢
-              </span>
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+              <div>
+                <span className="text-sm font-semibold text-slate-800">
+                  曝光量 / 點擊量 / CTR 趨勢
+                </span>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-slate-500">
+                <div className="flex items-center gap-1">
+                  <div className="h-2 w-3 bg-yellow-400"></div>
+                  <span>CTR (%)</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-2 w-3 bg-orange-500"></div>
+                  <span>點擊量</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-2 w-3 bg-blue-400"></div>
+                  <span>曝光量</span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-4 text-xs text-slate-500">
-              <div className="flex items-center gap-1">
-                <div className="h-2 w-3 bg-yellow-400"></div>
-                <span>CTR (%)</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="h-2 w-3 bg-orange-500"></div>
-                <span>點擊量</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="h-2 w-3 bg-blue-400"></div>
-                <span>曝光量</span>
-              </div>
-            </div>
-          </div>
-          <div className="h-80 w-full px-2 pb-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={chartData}
-                margin={{ top: 24, right: 24, bottom: 12, left: 12 }}
-              >
-                <defs>
-                  <linearGradient
-                    id="areaImpressions"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.9} />
-                    <stop offset="95%" stopColor="#60a5fa" stopOpacity={0.8} />
-                  </linearGradient>
-                  <linearGradient id="areaClicks" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.9} />
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0.8} />
-                  </linearGradient>
-                  <linearGradient id="areaCtr" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#facc15" stopOpacity={0.9} />
-                    <stop offset="95%" stopColor="#facc15" stopOpacity={0.8} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  stroke="rgba(148,163,184,0.2)"
-                  horizontal={true}
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="date"
-                  stroke="rgba(71,85,105,0.6)"
-                  tick={{ fontSize: 11 }}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  yAxisId="impressions"
-                  stroke="rgba(71,85,105,0.6)"
-                  domain={impressionsDomain}
-                  tick={{ fontSize: 11 }}
-                  tickFormatter={(value) =>
-                    Number.isFinite(value)
-                      ? Number(value).toLocaleString()
-                      : value
-                  }
-                />
-                <YAxis
-                  yAxisId="clicks"
-                  orientation="right"
-                  stroke="rgba(249,115,22,0.8)"
-                  domain={clicksDomain}
-                  tick={{ fontSize: 10 }}
-                  tickFormatter={(value) =>
-                    Number.isFinite(value)
-                      ? Number(value).toLocaleString()
-                      : value
-                  }
-                />
-                <YAxis
-                  yAxisId="percent"
-                  orientation="right"
-                  stroke="rgba(250,204,21,0.8)"
-                  domain={percentDomain}
-                  tickFormatter={(value) => `${value}%`}
-                  tick={{ fontSize: 10 }}
-                />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload || !payload.length) return null;
-                    const row = payload[0]?.payload;
-                    const impressions = payload.find(
-                      (item) => item.dataKey === "impressions",
-                    );
-                    const clicks = payload.find(
-                      (item) => item.dataKey === "clicks",
-                    );
-                    const ctr = payload.find(
-                      (item) => item.dataKey === "ctrPercent",
-                    );
-                    const weekday = row?.fullDate
-                      ? weekdayLabel(row.fullDate)
-                      : "";
-                    return (
-                      <div className="rounded-md bg-white px-3 py-2 text-xs text-slate-900 shadow-lg border border-slate-200">
-                        <div className="font-semibold text-slate-700">
-                          {row?.fullDate || ""}
-                          {weekday && (
-                            <span className="ml-1 text-[11px] text-slate-400">
-                              {weekday}
-                            </span>
-                          )}
-                        </div>
-                        {impressions && (
-                          <div>
-                            曝光：{Number(impressions.value).toLocaleString()}{" "}
-                            次
-                          </div>
-                        )}
-                        {clicks && (
-                          <div>
-                            點擊：{Number(clicks.value).toLocaleString()} 次
-                          </div>
-                        )}
-                        {ctr && <div>CTR：{Number(ctr.value).toFixed(2)}%</div>}
-                      </div>
-                    );
-                  }}
-                />
-                {weekendBands.map((band) => (
-                  <ReferenceArea
-                    key={band.key}
-                    x1={band.start}
-                    x2={band.end}
-                    fill="rgba(148, 163, 184, 0.15)"
-                    stroke={undefined}
-                    ifOverflow="extendDomain"
+            <div className="h-80 w-full px-2 pb-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={chartData}
+                  margin={{ top: 24, right: 24, bottom: 12, left: 12 }}
+                >
+                  <defs>
+                    <linearGradient
+                      id="areaImpressions"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.9} />
+                      <stop offset="95%" stopColor="#60a5fa" stopOpacity={0.8} />
+                    </linearGradient>
+                    <linearGradient id="areaClicks" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f97316" stopOpacity={0.9} />
+                      <stop offset="95%" stopColor="#f97316" stopOpacity={0.8} />
+                    </linearGradient>
+                    <linearGradient id="areaCtr" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#facc15" stopOpacity={0.9} />
+                      <stop offset="95%" stopColor="#facc15" stopOpacity={0.8} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    stroke="rgba(148,163,184,0.2)"
+                    horizontal={true}
+                    vertical={false}
                   />
-                ))}
-                <Area
-                  yAxisId="impressions"
-                  type="monotone"
-                  dataKey="impressions"
-                  name="曝光量"
-                  stroke="#60a5fa"
-                  strokeWidth={1.5}
-                  fill="url(#areaImpressions)"
-                  connectNulls
-                />
-                <Area
-                  yAxisId="clicks"
-                  type="monotone"
-                  dataKey="clicks"
-                  name="點擊量"
-                  stroke="#f97316"
-                  strokeWidth={1.5}
-                  fill="url(#areaClicks)"
-                  connectNulls
-                />
-                <Area
-                  yAxisId="percent"
-                  type="monotone"
-                  dataKey="ctrPercent"
-                  name="CTR (%)"
-                  stroke="#facc15"
-                  strokeWidth={1.5}
-                  fill="url(#areaCtr)"
-                  connectNulls
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+                  <XAxis
+                    dataKey="date"
+                    stroke="rgba(71,85,105,0.6)"
+                    tick={{ fontSize: 11 }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    yAxisId="impressions"
+                    stroke="rgba(71,85,105,0.6)"
+                    domain={impressionsDomain}
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(value) =>
+                      Number.isFinite(value)
+                        ? Number(value).toLocaleString()
+                        : value
+                    }
+                  />
+                  <YAxis
+                    yAxisId="clicks"
+                    orientation="right"
+                    stroke="rgba(249,115,22,0.8)"
+                    domain={clicksDomain}
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(value) =>
+                      Number.isFinite(value)
+                        ? Number(value).toLocaleString()
+                        : value
+                    }
+                  />
+                  <YAxis
+                    yAxisId="percent"
+                    orientation="right"
+                    stroke="rgba(250,204,21,0.8)"
+                    domain={percentDomain}
+                    tickFormatter={(value) => `${value}%`}
+                    tick={{ fontSize: 10 }}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload || !payload.length) return null;
+                      const row = payload[0]?.payload;
+                      const impressions = payload.find(
+                        (item) => item.dataKey === "impressions",
+                      );
+                      const clicks = payload.find(
+                        (item) => item.dataKey === "clicks",
+                      );
+                      const ctr = payload.find(
+                        (item) => item.dataKey === "ctrPercent",
+                      );
+                      const weekday = row?.fullDate
+                        ? weekdayLabel(row.fullDate)
+                        : "";
+                      return (
+                        <div className="rounded-md bg-white px-3 py-2 text-xs text-slate-900 shadow-lg border border-slate-200">
+                          <div className="font-semibold text-slate-700">
+                            {row?.fullDate || ""}
+                            {weekday && (
+                              <span className="ml-1 text-[11px] text-slate-400">
+                                {weekday}
+                              </span>
+                            )}
+                          </div>
+                          {impressions && (
+                            <div>
+                              曝光：{Number(impressions.value).toLocaleString()}{" "}
+                              次
+                            </div>
+                          )}
+                          {clicks && (
+                            <div>
+                              點擊：{Number(clicks.value).toLocaleString()} 次
+                            </div>
+                          )}
+                          {ctr && <div>CTR：{Number(ctr.value).toFixed(2)}%</div>}
+                        </div>
+                      );
+                    }}
+                  />
+                  {weekendBands.map((band) => (
+                    <ReferenceArea
+                      key={band.key}
+                      x1={band.start}
+                      x2={band.end}
+                      fill="rgba(148, 163, 184, 0.15)"
+                      stroke={undefined}
+                      ifOverflow="extendDomain"
+                    />
+                  ))}
+                  <Area
+                    yAxisId="impressions"
+                    type="monotone"
+                    dataKey="impressions"
+                    name="曝光量"
+                    stroke="#60a5fa"
+                    strokeWidth={1.5}
+                    fill="url(#areaImpressions)"
+                    connectNulls
+                  />
+                  <Area
+                    yAxisId="clicks"
+                    type="monotone"
+                    dataKey="clicks"
+                    name="點擊量"
+                    stroke="#f97316"
+                    strokeWidth={1.5}
+                    fill="url(#areaClicks)"
+                    connectNulls
+                  />
+                  <Area
+                    yAxisId="percent"
+                    type="monotone"
+                    dataKey="ctrPercent"
+                    name="CTR (%)"
+                    stroke="#facc15"
+                    strokeWidth={1.5}
+                    fill="url(#areaCtr)"
+                    connectNulls
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {(topPagesUp.length ||
         topPagesDown.length ||
         topQueriesUp.length ||
         topQueriesDown.length) > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MoverList
-            title="Top 5 上升頁面"
-            items={topPagesUp}
-            emptyLabel="尚無資料"
-          />
-          <MoverList
-            title="Top 5 下滑頁面"
-            items={topPagesDown}
-            emptyLabel="尚無資料"
-          />
-          <MoverList
-            title="Top 5 上升關鍵字"
-            items={topQueriesUp}
-            emptyLabel="尚無資料"
-          />
-          <MoverList
-            title="Top 5 下滑關鍵字"
-            items={topQueriesDown}
-            emptyLabel="尚無資料"
-          />
-        </div>
-      )}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MoverList
+              title="Top 5 上升頁面"
+              items={topPagesUp}
+              emptyLabel="尚無資料"
+            />
+            <MoverList
+              title="Top 5 下滑頁面"
+              items={topPagesDown}
+              emptyLabel="尚無資料"
+            />
+            <MoverList
+              title="Top 5 上升關鍵字"
+              items={topQueriesUp}
+              emptyLabel="尚無資料"
+            />
+            <MoverList
+              title="Top 5 下滑關鍵字"
+              items={topQueriesDown}
+              emptyLabel="尚無資料"
+            />
+          </div>
+        )}
 
       <div className="w-full space-y-3">
         <div className="flex w-full justify-end px-1 text-xs text-slate-500">
@@ -713,16 +713,14 @@ const DashboardOverview = React.memo(function DashboardOverview({ data, windowDa
         </div>
 
         <div
-          className={`flex flex-wrap items-start gap-4 ${
-            showComparison ? "" : "xl:flex-nowrap"
-          }`}
+          className={`flex flex-wrap items-start gap-4 ${showComparison ? "" : "xl:flex-nowrap"
+            }`}
         >
           <div
-            className={`flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${
-              showComparison
-                ? "min-w-[320px]"
-                : "min-w-[200px] xl:max-w-[540px]"
-            }`}
+            className={`flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${showComparison
+              ? "min-w-[320px]"
+              : "min-w-[200px] xl:max-w-[540px]"
+              }`}
           >
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
               <div>

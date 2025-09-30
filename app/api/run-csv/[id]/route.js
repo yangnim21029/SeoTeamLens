@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { unstable_cache, revalidateTag } from "next/cache";
+import crypto from "node:crypto";
 import { getProjectById } from "@/app/lib/projects-store";
 
 // 常數定義
 const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
 const MIN_IMPRESSIONS_FOR_TOP = 5;
+const FOUR_HOUR_SECONDS = 4 * 60 * 60;
 
 // ========================================================================
 // ## 輔助函式 (Helper Functions)
@@ -29,6 +32,11 @@ function extractArticleId(url) {
   if (typeof url !== "string") return null;
   const m = url.match(/\/article\/(\d+)/);
   return m ? m[1] : null;
+}
+
+function hashKey(obj) {
+  const s = JSON.stringify(obj);
+  return crypto.createHash("sha1").update(s).digest("hex").slice(0, 16);
 }
 
 
@@ -122,6 +130,7 @@ export async function GET(req, { params }) {
     const siteOverride = url.searchParams.get("site");
     const daysParam = Number.parseInt(String(url.searchParams.get("days") ?? "").trim(), 10);
     const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 21;
+    const refresh = url.searchParams.get("refresh") === "1";
 
     // ✅ **修正 1: 正確解析巢狀的 JSON 資料**
     const records = Array.isArray(project.rows)
@@ -201,14 +210,20 @@ export async function GET(req, { params }) {
       ORDER BY date::DATE, query;
     `;
 
+    const paramsHash = hashKey({ id, site: derivedSite, days });
+    const tag = `run-csv:${id}`;
+    if (refresh) {
+      revalidateTag(tag);
+    }
 
-
-    const getData = async () => {
+    const getData = unstable_cache(
+      async () => {
       const payload = { data_type: "hourly", site: derivedSite, sql: sql.trim() };
       const res = await fetch(UPSTREAM, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
+        next: { revalidate: FOUR_HOUR_SECONDS },
       });
 
       if (!res.ok) {
@@ -251,15 +266,18 @@ export async function GET(req, { params }) {
 
       const dataOut = { ...data, results: filteredResults };
       return { ...dataOut, requested, meta };
-    };
+      },
+      ["run-csv", id, paramsHash],
+      { revalidate: FOUR_HOUR_SECONDS, tags: [tag] },
+    );
 
-    const result = await getData();
-    console.log("result keys:", Object.keys(result));
-    console.log("result.results length:", result.results?.length);
-    console.log("first result:", result.results?.[0]);
-    return NextResponse.json(result, {
+    const cached = await getData();
+    console.log("result keys:", Object.keys(cached));
+    console.log("result.results length:", cached.results?.length);
+    console.log("first result:", cached.results?.[0]);
+    return NextResponse.json(cached, {
       status: 200,
-      headers: { "Cache-Control": "s-maxage=3600, stale-while-revalidate=86400" },
+      headers: { "Cache-Control": "s-maxage=14400, stale-while-revalidate=86400" },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

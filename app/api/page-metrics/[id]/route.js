@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import { getProjectById } from "@/app/lib/projects-store";
 
 const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
-const ONE_HOUR_SECONDS = 60 * 60;
+const FOUR_HOUR_SECONDS = 4 * 60 * 60;
 
 function extractArticleId(url) {
   if (typeof url !== "string") return null;
@@ -213,7 +213,7 @@ export async function GET(req, { params }) {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
-          next: { revalidate: ONE_HOUR_SECONDS },
+          next: { revalidate: FOUR_HOUR_SECONDS },
         });
         if (!res.ok) {
           const text = await res.text().catch(() => "");
@@ -269,14 +269,14 @@ export async function GET(req, { params }) {
         return { ...data, results: normalized, meta };
       },
       ["page-metrics", id, paramsHash],
-      { revalidate: ONE_HOUR_SECONDS, tags: [tag] },
+      { revalidate: FOUR_HOUR_SECONDS, tags: [tag] },
     );
 
     const cached = await getData();
     return NextResponse.json(cached, {
       status: 200,
       headers: {
-        "Cache-Control": "s-maxage=3600, stale-while-revalidate=86400",
+        "Cache-Control": "s-maxage=14400, stale-while-revalidate=86400",
       },
     });
   } catch (err) {
