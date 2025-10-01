@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-
-import { clearCache } from "@/app/lib/simple-cache";
 import { requireAdmin } from "@/app/lib/auth";
 
 export const POST = requireAdmin(async (req) => {
@@ -15,9 +13,16 @@ export const POST = requireAdmin(async (req) => {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 清理舊快取
-    const clearedEntries = clearCache();
-    console.log(`[Cache Refresh] Cleared ${clearedEntries} cache entries`);
+    // 統一快取架構：所有 API 都使用 Vercel Cache
+    // 
+    // 之前的 Simple Cache 在 Vercel serverless 環境中不會持久化，
+    // 導致 cronjob 的 revalidateTag() 對 run-csv API 無效。
+    // 
+    // 現在所有 API 都使用 createVercelCache，確保：
+    // 1. 快取在 Vercel 上持久化
+    // 2. revalidateTag() 對所有 API 都有效
+    // 3. cronjob 能完全清除和重新生成快取
+    console.log(`[Cache Refresh] Starting cache refresh for projects`);
 
     const refreshedTags = [];
     const refreshedUrls = [];

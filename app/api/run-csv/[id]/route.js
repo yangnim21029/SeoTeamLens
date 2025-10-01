@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import crypto from "node:crypto";
 import { getProjectById } from "@/app/lib/projects-store";
-import { vercelFetch } from "@/app/lib/vercel-cache";
-import { simpleCache } from "@/app/lib/simple-cache";
+import { createVercelCache, vercelFetch } from "@/app/lib/vercel-cache";
 
 // 常數定義
 const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
@@ -268,9 +268,20 @@ export async function GET(req, { params }) {
     `;
 
     const paramsHash = hashKey({ id, site: derivedSite, days });
-    const cacheKey = `run-csv:${id}:${paramsHash}`;
+    const tag = `run-csv:${id}`;
+    
+    // 如果請求刷新，清除 Vercel 快取
+    // 
+    // 改用 Vercel Cache 而不是 Simple Cache 的原因：
+    // 1. Vercel Cache 在 serverless 環境中會持久化，跨 function 實例有效
+    // 2. 支援 revalidateTag() 來清除特定標籤的快取，讓 cronjob 刷新有效
+    // 3. Simple Cache 只存在於記憶體中，每次冷啟動會重置，不適合 Vercel 環境
+    if (refresh) {
+      revalidateTag(tag);
+    }
 
-    const getData = simpleCache(cacheKey, async () => {
+    const getData = createVercelCache(
+      async () => {
       
       const payload = { data_type: "hourly", site: derivedSite, sql: sql.trim() };
       console.log(`[run-csv] Sending request to upstream for ${id}`);
@@ -391,7 +402,13 @@ export async function GET(req, { params }) {
 
       const dataOut = { ...data, results: filteredResults };
       return { ...dataOut, requested, meta };
-    }, FOUR_HOUR_SECONDS * 1000, refresh);
+    },
+    ["run-csv", id, paramsHash],
+    { 
+      revalidate: FOUR_HOUR_SECONDS, 
+      tags: [tag] 
+    }
+  );
 
     const startTime = Date.now();
     const cached = await getData();
