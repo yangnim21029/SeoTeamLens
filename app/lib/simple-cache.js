@@ -2,13 +2,15 @@
 const cache = new Map();
 const CACHE_TTL = 4 * 60 * 60 * 1000; // 4 小時
 
-export function simpleCache(key, fn, ttl = CACHE_TTL) {
+export function simpleCache(key, fn, ttl = CACHE_TTL, forceRefresh = false) {
   return async () => {
     const now = Date.now();
     const cached = cache.get(key);
     
-    // 檢查快取是否存在且未過期
-    if (cached && (now - cached.timestamp) < ttl) {
+    // 如果強制刷新，跳過快取檢查
+    if (forceRefresh) {
+      console.log(`[SimpleCache] Force refresh for key: ${key.slice(0, 50)}...`);
+    } else if (cached && (now - cached.timestamp) < ttl) {
       console.log(`[SimpleCache] Cache hit for key: ${key.slice(0, 50)}...`);
       return cached.data;
     }

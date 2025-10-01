@@ -109,12 +109,12 @@ export default function UrlRankingPage() {
 
   const tableSourceJson = useMemo(() => {
     try {
-      return JSON.stringify(groupedBase, null, 2);
+      return JSON.stringify(urlView, null, 2);
     } catch (error) {
-      console.error("Failed to stringify groupedBase", error);
+      console.error("Failed to stringify urlView", error);
       return "(無法序列化資料)";
     }
-  }, [groupedBase]);
+  }, [urlView]);
 
   const toggleExpand = useCallback((url) => {
     setExpanded((prev) => {

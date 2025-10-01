@@ -69,6 +69,7 @@ export function dedupeRows(rows) {
   });
   return Array.from(map.values()).map((row) => {
     const history = Array.isArray(row.history) ? row.history : [];
+    // 使用保守的填充策略：只填充少量的外部空隙
     const filled = fillExteriorGaps(fillInteriorGaps(history));
     return { ...row, history: filled };
   });
@@ -105,27 +106,23 @@ export function fillInteriorGaps(series = []) {
 }
 
 export function fillExteriorGaps(series = []) {
-  const out = Array.from(series);
-  let lastSeen = null;
-  for (let i = out.length - 1; i >= 0; i--) {
-    const value = out[i];
-    if (value == null) continue;
-    lastSeen = value;
-    break;
-  }
-  if (lastSeen != null) {
-    for (let i = out.length - 1; i >= 0 && out[i] == null; i--) {
-      out[i] = lastSeen;
-    }
-  }
-
-  return out;
+  // 完全禁用外部填充，保持資料的真實性
+  // 
+  // 原本這個函數會將最後一個已知排名值向前填充所有的 null 值，
+  // 但這會掩蓋真實的資料變化，特別是在較長的時間窗口（30天、60天）中。
+  // 
+  // 例如：如果一個關鍵字在早期有變化 [null, null, 5, 6, 8, 8, 8...]，
+  // 填充後會變成 [8, 8, 8, 8, 8, 8, 8...]，完全看不到 5→6→8 的變化。
+  // 
+  // 現在我們保持原始資料不變，讓用戶看到真實的排名歷史，
+  // 包括沒有排名資料的時期（顯示為 null）。
+  return Array.from(series);
 }
 
 // 專門用於 Agg Trend 的填充函數，不填充開頭的空值
 export function fillExteriorGapsForAggTrend(series = []) {
   const out = Array.from(series);
-  
+
   // 找到第一個非 null 值的位置
   let firstDataIndex = -1;
   for (let i = 0; i < out.length; i++) {
@@ -134,12 +131,12 @@ export function fillExteriorGapsForAggTrend(series = []) {
       break;
     }
   }
-  
+
   // 如果沒有資料，返回原始陣列
   if (firstDataIndex === -1) {
     return out;
   }
-  
+
   // 只填充最後的空值，不填充開頭的空值
   let lastSeen = null;
   for (let i = out.length - 1; i >= firstDataIndex; i--) {
@@ -148,7 +145,7 @@ export function fillExteriorGapsForAggTrend(series = []) {
     lastSeen = value;
     break;
   }
-  
+
   if (lastSeen != null) {
     for (let i = out.length - 1; i >= firstDataIndex && out[i] == null; i--) {
       out[i] = lastSeen;
@@ -164,7 +161,17 @@ export function aggregateByUrl(rows, windowDays) {
     const windowHistRaw = r.history
       .slice(-windowDays)
       .map((v) => (v == null ? null : Math.min(v, MAX_VISIBLE_RANK)));
-    const windowHist = fillExteriorGaps(fillInteriorGaps(windowHistRaw));
+    // 保留原始資料，不做任何填充，讓用戶看到真實的資料狀況
+    // 
+    // windowHist 是用於顯示在表格中的時間窗口資料（例如最近30天）。
+    // 我們不再使用 fillExteriorGaps 來填充空值，因為：
+    // 1. 填充會掩蓋真實的排名變化歷史
+    // 2. null 值代表該時期確實沒有排名資料，這是有意義的信息
+    // 3. 用戶應該能區分「沒有資料」和「排名穩定」
+    const windowHist = windowHistRaw;
+
+
+
     const start = windowHist[0];
     const end = latestDefinedRank(windowHist);
     const delta = trendDelta(start, end);
@@ -186,7 +193,7 @@ export function aggregateByUrl(rows, windowDays) {
       });
       return seen ? best : null;
     });
-    
+
     // 檢查是否有任何真實資料
     const hasAnyData = aggRaw.some(v => v !== null);
     const agg = hasAnyData ? fillExteriorGapsForAggTrend(fillInteriorGaps(aggRaw)) : aggRaw;
@@ -219,10 +226,10 @@ export function safeDecodeURL(u) {
   if (!u || typeof u !== "string") return u;
   try {
     return decodeURI(u);
-  } catch {}
+  } catch { }
   try {
     return decodeURIComponent(u);
-  } catch {}
+  } catch { }
   return u;
 }
 
@@ -272,9 +279,9 @@ export function buildRowsFromResults(results, days, requestedPairs = []) {
     const pos = Number.parseFloat(row.avg_position);
     const impressions = Number(
       row.impressions ??
-        row.total_impressions ??
-        row.sum_impressions ??
-        row.impr,
+      row.total_impressions ??
+      row.sum_impressions ??
+      row.impr,
     );
     if (!dateVal || !page || !queryStr || !Number.isFinite(pos)) continue;
     if (
@@ -288,12 +295,12 @@ export function buildRowsFromResults(results, days, requestedPairs = []) {
     const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
     const idx = dateIndex.get(label);
     if (idx == null) continue;
-    
+
     // 嘗試通過 article ID 找到 canonical URL
     const articleId = extractArticleId(page);
     const canonicalUrl = articleId ? articleIdToCanonical.get(articleId) : null;
     const targetUrl = canonicalUrl || page;
-    
+
     const key = `${targetUrl}||${queryStr}`;
     if (!map.has(key)) {
       // 如果找不到 canonical URL 的記錄，嘗試直接使用原始 URL
@@ -304,7 +311,7 @@ export function buildRowsFromResults(results, days, requestedPairs = []) {
         rec.history[idx] = rank;
         continue;
       }
-      
+
       // 如果都找不到，創建新記錄
       map.set(key, {
         keyword: queryStr,
@@ -318,6 +325,7 @@ export function buildRowsFromResults(results, days, requestedPairs = []) {
   }
   return Array.from(map.values()).map((row) => {
     const history = Array.isArray(row.history) ? row.history : [];
+    // 使用保守的填充策略：只填充少量的外部空隙
     const filled = fillExteriorGaps(fillInteriorGaps(history));
     return { ...row, history: filled };
   });
@@ -366,9 +374,9 @@ export function buildTrafficTimeline(results = [], days = 0) {
 
     const impressions = Number(
       row.impressions ??
-        row.total_impressions ??
-        row.sum_impressions ??
-        row.impr,
+      row.total_impressions ??
+      row.sum_impressions ??
+      row.impr,
     );
     if (Number.isFinite(impressions)) {
       out[idx].impressions += impressions;

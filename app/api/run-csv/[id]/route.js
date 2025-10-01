@@ -179,6 +179,10 @@ export async function GET(req, { params }) {
     const daysParam = Number.parseInt(String(url.searchParams.get("days") ?? "").trim(), 10);
     const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 21;
     const refresh = url.searchParams.get("refresh") === "1";
+    
+    if (refresh) {
+      console.log(`[run-csv] Refresh requested for ${id}`);
+    }
 
     // ✅ **修正 1: 正確解析巢狀的 JSON 資料**
     const records = Array.isArray(project.rows)
@@ -271,6 +275,8 @@ export async function GET(req, { params }) {
       const payload = { data_type: "hourly", site: derivedSite, sql: sql.trim() };
       console.log(`[run-csv] Sending request to upstream for ${id}`);
       console.log(`[run-csv] SQL length: ${payload.sql.length} chars`);
+      console.log(`[run-csv] SQL query:`, payload.sql.slice(0, 500) + (payload.sql.length > 500 ? '...' : ''));
+      console.log(`[run-csv] Site:`, derivedSite);
       
       const res = await vercelFetch(UPSTREAM, {
         method: "POST",
@@ -285,6 +291,31 @@ export async function GET(req, { params }) {
       }
 
       const data = await res.json();
+      
+      // 調試：檢查上游資料的日期範圍
+      if (data?.results?.length) {
+        const dates = data.results.map(r => r.date || r["CAST(date AS DATE)"] || r.dt).filter(Boolean);
+        const uniqueDates = [...new Set(dates)].sort();
+        console.log(`[run-csv] Upstream data date range for ${id}:`, {
+          totalRows: data.results.length,
+          dateRange: `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`,
+          uniqueDatesCount: uniqueDates.length,
+          sampleDates: uniqueDates.slice(-5) // 最近5天
+        });
+        
+        // 檢查特定關鍵字的資料
+        const sampleKeyword = data.results.find(r => r.query && r.query.includes('蓮塘'));
+        if (sampleKeyword) {
+          console.log(`[run-csv] Sample keyword data:`, {
+            query: sampleKeyword.query,
+            date: sampleKeyword.date || sampleKeyword["CAST(date AS DATE)"] || sampleKeyword.dt,
+            position: sampleKeyword.avg_position || sampleKeyword.position,
+            page: sampleKeyword.page
+          });
+        }
+        
+
+      }
 
       const requested = Array.from(requestedMap.values()).map((p) => ({
         page: canonicalUrlMap.get(p.pageId) || undefined,
@@ -342,6 +373,13 @@ export async function GET(req, { params }) {
           return true;
         });
 
+      // 檢查是否有資料被過濾掉
+      console.log(`[run-csv] Data processing for ${id}:`, {
+        originalResults: normalizedResults.length,
+        afterFiltering: filteredResults.length,
+        filteredOut: normalizedResults.length - filteredResults.length
+      });
+
       const meta = {
         rowCount: records.length,
         parsedKeywords: requested.length,
@@ -353,7 +391,7 @@ export async function GET(req, { params }) {
 
       const dataOut = { ...data, results: filteredResults };
       return { ...dataOut, requested, meta };
-    });
+    }, FOUR_HOUR_SECONDS * 1000, refresh);
 
     const startTime = Date.now();
     const cached = await getData();
@@ -367,23 +405,19 @@ export async function GET(req, { params }) {
     console.log("canonicalUrlMap size:", canonicalUrlMap.size);
     console.log("canonicalUrlMap entries:", Array.from(canonicalUrlMap.entries()).slice(0, 3));
     
-    // 檢查回應大小並清理資料
+    // 檢查回應大小（僅用於監控）
     const responseSize = JSON.stringify(cached).length;
     console.log(`[run-csv] Response size: ${responseSize} bytes`);
     
-    let cleanResponse = cached;
-    if (responseSize > 1000000) { // 如果超過 1MB，簡化資料
-      console.log(`[run-csv] Large response detected, simplifying data`);
-      cleanResponse = {
-        ...cached,
-        results: cached.results?.slice(0, 1000) || [], // 限制結果數量
-        meta: {
-          ...cached.meta,
-          truncated: true,
-          originalSize: cached.results?.length || 0
-        }
-      };
-    }
+    // 不再截斷資料，返回完整結果
+    // 
+    // 之前的邏輯會在回應超過 1MB 時截斷資料到只有前 1000 筆，
+    // 但這會導致大型項目丟失重要的歷史資料，特別是最近的資料。
+    // 
+    // 現在我們返回完整的資料集，讓前端能顯示完整的排名變化歷史。
+    // 如果真的需要優化效能，應該在 SQL 層面或快取層面處理，
+    // 而不是在回應階段截斷資料。
+    const cleanResponse = cached;
 
     // 使用 NextResponse.json() 來正確處理 UTF-8 編碼
     // 確保 header 值不包含非 ASCII 字符

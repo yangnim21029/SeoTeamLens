@@ -46,6 +46,14 @@ const Sparkline = memo(function Sparkline({
   const effectiveSecVariant = secondaryVariant || variant;
 
   const normalizeValue = (raw, mode) => {
+    // 如果原始值是 null 或 undefined，直接返回 null
+    // 
+    // 修復了之前的 bug：Number(null) 會變成 0，然後 Math.max(1, 0) 會變成 1，
+    // 導致沒有排名資料的時期錯誤地顯示為排名第1。
+    // 
+    // 現在我們正確處理 null 值，讓圖表能顯示資料空隙。
+    if (raw == null) return null;
+    
     let value = Number(raw);
     if (!Number.isFinite(value)) return null;
     if (mode === "rank") {
