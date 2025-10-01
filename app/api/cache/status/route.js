@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getCacheStats } from "@/app/lib/simple-cache";
 
 export async function GET(req) {
   try {
@@ -20,17 +21,13 @@ export async function GET(req) {
       timestamp: new Date().toISOString(),
     };
 
-    // 測試快取功能
-    const testCacheKey = `cache-test-${Date.now()}`;
-    const testData = { test: true, timestamp: Date.now() };
+    // 獲取快取統計
+    const cacheStats = getCacheStats();
     
     return NextResponse.json({
       status: 'ok',
       environment: envInfo,
-      cacheTest: {
-        key: testCacheKey,
-        data: testData,
-      },
+      cache: cacheStats,
       message: 'Cache system is operational'
     });
 

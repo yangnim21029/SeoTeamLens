@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
 import crypto from "node:crypto";
 import { getProjectById } from "@/app/lib/projects-store";
-import { createVercelCache, vercelFetch } from "@/app/lib/vercel-cache";
+import { vercelFetch } from "@/app/lib/vercel-cache";
+import { simpleCache } from "@/app/lib/simple-cache";
 
 // 常數定義
 const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
@@ -55,6 +55,51 @@ function normalizeUrlCandidate(value) {
     return new URL(candidate).toString();
   } catch {
     return null;
+  }
+}
+
+function safeEncodeUrl(url) {
+  if (!url || typeof url !== "string") return url;
+  
+  // 簡化處理：只處理明顯需要編碼的情況
+  try {
+    // 檢查是否已經編碼
+    if (url.includes('%')) {
+      // 嘗試解碼，如果成功則重新編碼
+      try {
+        const decoded = decodeURIComponent(url);
+        return decoded; // 返回解碼後的版本，讓資料庫處理
+      } catch {
+        return url; // 解碼失敗，返回原始 URL
+      }
+    }
+    
+    // 如果包含非 ASCII 字符，保持原樣讓資料庫處理
+    return url;
+  } catch {
+    return url;
+  }
+}
+
+function sanitizeForSql(str) {
+  if (!str || typeof str !== "string") return str;
+  // 移除或替換可能造成問題的字符
+  return str
+    .replace(/'/g, "''") // SQL 單引號轉義
+    .replace(/\\/g, "\\\\") // 反斜線轉義
+    .replace(/\x00/g, ""); // 移除 null 字符
+}
+
+function cleanStringForResponse(str) {
+  if (!str || typeof str !== "string") return str;
+  // 保持中文字符，但確保它們不會造成 ByteString 錯誤
+  try {
+    // 測試字符串是否可以安全序列化
+    JSON.stringify(str);
+    return str;
+  } catch {
+    // 如果序列化失敗，使用 URL 編碼
+    return encodeURIComponent(str);
   }
 }
 
@@ -153,12 +198,15 @@ export async function GET(req, { params }) {
     const requestedMap = new Map();
 
     records.forEach((record) => {
-      const pageUrl = normaliseString(getFieldValue(record, "url"));
+      const pageUrlRaw = normaliseString(getFieldValue(record, "url"));
       const queriesRaw = getFieldValue(record, "goalkeyword");
-      if (!pageUrl || !queriesRaw) return;
+      if (!pageUrlRaw || !queriesRaw) return;
 
+      // 安全處理 URL
+      const pageUrl = safeEncodeUrl(pageUrlRaw);
       const pageId = extractArticleId(pageUrl);
       if (!pageId) return;
+      
       const prev = canonicalUrlMap.get(pageId);
       if (!prev || String(pageUrl).length > String(prev).length) {
         canonicalUrlMap.set(pageId, pageUrl);
@@ -170,7 +218,8 @@ export async function GET(req, { params }) {
       for (const q of queryLines) {
         const info = cleanQueryForSql(q);
         if (!info) continue;
-        cleanedForSql.push(`'${info.spaceless.replace(/'/g, "''")}'`);
+        const sanitizedQuery = sanitizeForSql(info.spaceless);
+        cleanedForSql.push(`'${sanitizedQuery}'`);
         const volume = extractVolume(q);
         const key = `${pageId}||${info.spaceless}`;
         if (!requestedMap.has(key)) {
@@ -178,7 +227,8 @@ export async function GET(req, { params }) {
         }
       }
       if (cleanedForSql.length) {
-        const cond = `(page LIKE '%${pageId}%' AND REGEXP_REPLACE(query, '\\s+', '', 'g') IN (${cleanedForSql.join(", ")}))`;
+        const sanitizedPageId = sanitizeForSql(pageId);
+        const cond = `(page LIKE '%${sanitizedPageId}%' AND REGEXP_REPLACE(query, '\\s+', '', 'g') IN (${cleanedForSql.join(", ")}))`;
         whereConditions.push(cond);
       }
     });
@@ -212,14 +262,14 @@ export async function GET(req, { params }) {
     `;
 
     const paramsHash = hashKey({ id, site: derivedSite, days });
-    const tag = `run-csv:${id}`;
-    if (refresh) {
-      revalidateTag(tag);
-    }
+    const cacheKey = `run-csv:${id}:${paramsHash}`;
 
-    const getData = createVercelCache(
-      async () => {
+    const getData = simpleCache(cacheKey, async () => {
+      
       const payload = { data_type: "hourly", site: derivedSite, sql: sql.trim() };
+      console.log(`[run-csv] Sending request to upstream for ${id}`);
+      console.log(`[run-csv] SQL length: ${payload.sql.length} chars`);
+      
       const res = await vercelFetch(UPSTREAM, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -228,6 +278,7 @@ export async function GET(req, { params }) {
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
+        console.error(`[run-csv] Upstream error ${res.status}:`, text.slice(0, 1000));
         throw new Error(`Upstream error ${res.status}: ${text.slice(0, 4000)}`);
       }
 
@@ -246,10 +297,11 @@ export async function GET(req, { params }) {
         .map((row) => {
           // 歸一化 page URL
           const rawPage = row.page ?? row.page_url ?? row.url ?? "";
-          const pageId = extractArticleId(rawPage);
+          const safeRawPage = safeEncodeUrl(rawPage);
+          const pageId = extractArticleId(safeRawPage);
           const canonical = pageId
-            ? canonicalUrlMap.get(pageId) || rawPage
-            : rawPage;
+            ? canonicalUrlMap.get(pageId) || safeRawPage
+            : safeRawPage;
           
           // 歸一化其他欄位
           const impressions = Number(
@@ -299,10 +351,7 @@ export async function GET(req, { params }) {
 
       const dataOut = { ...data, results: filteredResults };
       return { ...dataOut, requested, meta };
-      },
-      ["run-csv", id, paramsHash],
-      { revalidate: FOUR_HOUR_SECONDS, tags: [tag] }
-    );
+    });
 
     const startTime = Date.now();
     const cached = await getData();
@@ -316,17 +365,35 @@ export async function GET(req, { params }) {
     console.log("canonicalUrlMap size:", canonicalUrlMap.size);
     console.log("canonicalUrlMap entries:", Array.from(canonicalUrlMap.entries()).slice(0, 3));
     
-    return NextResponse.json(cached, {
+    // 檢查回應大小並清理資料
+    const responseSize = JSON.stringify(cached).length;
+    console.log(`[run-csv] Response size: ${responseSize} bytes`);
+    
+    let cleanResponse = cached;
+    if (responseSize > 1000000) { // 如果超過 1MB，簡化資料
+      console.log(`[run-csv] Large response detected, simplifying data`);
+      cleanResponse = {
+        ...cached,
+        results: cached.results?.slice(0, 1000) || [], // 限制結果數量
+        meta: {
+          ...cached.meta,
+          truncated: true,
+          originalSize: cached.results?.length || 0
+        }
+      };
+    }
+
+    return NextResponse.json(cleanResponse, {
       status: 200,
       headers: { 
         "Cache-Control": "s-maxage=14400, stale-while-revalidate=86400",
         "X-Cache-Duration": duration.toString(),
-        "X-Cache-Key": `run-csv:${id}:${paramsHash.slice(0, 8)}`,
+        "X-Cache-Key": `run-csv:${id.slice(0, 10)}:${paramsHash.slice(0, 8)}`,
       },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[API Error for ID: ${params.id}]`, err);
+    console.error(`[API Error for ID: ${id}]`, err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

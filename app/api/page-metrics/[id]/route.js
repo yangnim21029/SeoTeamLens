@@ -5,6 +5,29 @@ import crypto from "node:crypto";
 import { getProjectById } from "@/app/lib/projects-store";
 import { createVercelCache, vercelFetch } from "@/app/lib/vercel-cache";
 
+function safeEncodeUrl(url) {
+  if (!url || typeof url !== "string") return url;
+  
+  // 簡化處理：只處理明顯需要編碼的情況
+  try {
+    // 檢查是否已經編碼
+    if (url.includes('%')) {
+      // 嘗試解碼，如果成功則重新編碼
+      try {
+        const decoded = decodeURIComponent(url);
+        return decoded; // 返回解碼後的版本，讓資料庫處理
+      } catch {
+        return url; // 解碼失敗，返回原始 URL
+      }
+    }
+    
+    // 如果包含非 ASCII 字符，保持原樣讓資料庫處理
+    return url;
+  } catch {
+    return url;
+  }
+}
+
 const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
 const FOUR_HOUR_SECONDS = 4 * 60 * 60;
 
@@ -112,9 +135,10 @@ export async function GET(req, { params }) {
     const exactUrlMap = new Map();
 
     records.forEach((record) => {
-      const pageUrl = normaliseString(getFieldValue(record, "url"));
-      if (!pageUrl) return;
+      const pageUrlRaw = normaliseString(getFieldValue(record, "url"));
+      if (!pageUrlRaw) return;
 
+      const pageUrl = safeEncodeUrl(pageUrlRaw);
       const pageId = extractArticleId(pageUrl);
       if (pageId) {
         const existing = canonicalUrlMap.get(pageId);

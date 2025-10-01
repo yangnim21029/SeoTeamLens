@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 
+import { clearCache } from "@/app/lib/simple-cache";
+
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -11,6 +13,10 @@ export async function POST(req) {
     if (secret !== expectedSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // 清理舊快取
+    const clearedEntries = clearCache();
+    console.log(`[Cache Refresh] Cleared ${clearedEntries} cache entries`);
 
     const refreshedTags = [];
     const refreshedUrls = [];

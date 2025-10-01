@@ -122,6 +122,42 @@ export function fillExteriorGaps(series = []) {
   return out;
 }
 
+// 專門用於 Agg Trend 的填充函數，不填充開頭的空值
+export function fillExteriorGapsForAggTrend(series = []) {
+  const out = Array.from(series);
+  
+  // 找到第一個非 null 值的位置
+  let firstDataIndex = -1;
+  for (let i = 0; i < out.length; i++) {
+    if (out[i] != null) {
+      firstDataIndex = i;
+      break;
+    }
+  }
+  
+  // 如果沒有資料，返回原始陣列
+  if (firstDataIndex === -1) {
+    return out;
+  }
+  
+  // 只填充最後的空值，不填充開頭的空值
+  let lastSeen = null;
+  for (let i = out.length - 1; i >= firstDataIndex; i--) {
+    const value = out[i];
+    if (value == null) continue;
+    lastSeen = value;
+    break;
+  }
+  
+  if (lastSeen != null) {
+    for (let i = out.length - 1; i >= firstDataIndex && out[i] == null; i--) {
+      out[i] = lastSeen;
+    }
+  }
+
+  return out;
+}
+
 export function aggregateByUrl(rows, windowDays) {
   const map = new Map();
   rows.forEach((r) => {
@@ -153,7 +189,7 @@ export function aggregateByUrl(rows, windowDays) {
     
     // 檢查是否有任何真實資料
     const hasAnyData = aggRaw.some(v => v !== null);
-    const agg = hasAnyData ? fillExteriorGaps(fillInteriorGaps(aggRaw)) : aggRaw;
+    const agg = hasAnyData ? fillExteriorGapsForAggTrend(fillInteriorGaps(aggRaw)) : aggRaw;
 
     const avgCurrentRaw =
       items.reduce((acc, it) => acc + safeRank(it.end), 0) / items.length;
