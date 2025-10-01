@@ -148,10 +148,12 @@ function deriveSiteFromRecords(records) {
 // ========================================================================
 
 export async function GET(req, { params }) {
+  let id = 'unknown'; // 預設值，避免錯誤處理時出現問題
+  
   try {
     const url = new URL(req.url);
     const p = await params;
-    const id = p?.id;
+    id = p?.id;
     if (!id) {
       return NextResponse.json({ error: "Missing project id" }, { status: 400 });
     }
@@ -383,12 +385,16 @@ export async function GET(req, { params }) {
       };
     }
 
+    // 使用 NextResponse.json() 來正確處理 UTF-8 編碼
+    // 確保 header 值不包含非 ASCII 字符
+    const safeId = encodeURIComponent(id.slice(0, 10));
+    
     return NextResponse.json(cleanResponse, {
       status: 200,
       headers: { 
         "Cache-Control": "s-maxage=14400, stale-while-revalidate=86400",
         "X-Cache-Duration": duration.toString(),
-        "X-Cache-Key": `run-csv:${id.slice(0, 10)}:${paramsHash.slice(0, 8)}`,
+        "X-Cache-Key": `run-csv:${safeId}:${paramsHash.slice(0, 8)}`,
       },
     });
   } catch (err) {

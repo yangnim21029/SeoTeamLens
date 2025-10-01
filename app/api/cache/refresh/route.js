@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 
 import { clearCache } from "@/app/lib/simple-cache";
+import { requireAdmin } from "@/app/lib/auth";
 
-export async function POST(req) {
+export const POST = requireAdmin(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const { projectIds, secret, days = [7, 30, 60] } = body;
@@ -111,10 +112,10 @@ export async function POST(req) {
       details: error.message 
     }, { status: 500 });
   }
-}
+});
 
 // 也支援 GET 請求，方便測試
-export async function GET(req) {
+export const GET = requireAdmin(async (req) => {
   const url = new URL(req.url);
   const secret = url.searchParams.get("secret");
   const projectIds = url.searchParams.get("projectIds")?.split(",").filter(Boolean);
@@ -125,4 +126,4 @@ export async function GET(req) {
     json: async () => ({ secret, projectIds, days }),
     nextUrl: req.nextUrl
   });
-}
+});

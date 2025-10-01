@@ -304,12 +304,16 @@ export async function GET(req, { params }) {
     console.log(`[page-metrics] ${id} - Duration: ${duration}ms`);
     console.log(`[page-metrics] Cache key: page-metrics:${id}:${paramsHash}`);
 
+    // 使用 NextResponse.json() 來正確處理 UTF-8 編碼
+    // 確保 header 值不包含非 ASCII 字符
+    const safeId = encodeURIComponent(id);
+    
     return NextResponse.json(cached, {
       status: 200,
       headers: {
         "Cache-Control": "s-maxage=14400, stale-while-revalidate=86400",
         "X-Cache-Duration": duration.toString(),
-        "X-Cache-Key": `page-metrics:${id}:${paramsHash.slice(0, 8)}`,
+        "X-Cache-Key": `page-metrics:${safeId.slice(0, 20)}:${paramsHash.slice(0, 8)}`,
       },
     });
   } catch (err) {

@@ -5,6 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { useRankData } from "../context/rank-data";
+import { useAuth } from "../context/auth-context";
+import UserMenu from "./UserMenu";
+import AuthGuard from "./AuthGuard";
 
 const NAV_ITEMS = [
   { href: "/overview", label: "概覽", icon: LayoutDashboard },
@@ -24,8 +27,14 @@ export default function AppShell({ children }) {
     activeProject,
   } = useRankData();
 
+  // 如果是登入頁面，不需要認證保護
+  if (pathname === '/login') {
+    return children;
+  }
+
   return (
-    <div className="flex min-h-screen bg-slate-100/60 text-slate-900">
+    <AuthGuard>
+      <div className="flex min-h-screen bg-slate-100/60 text-slate-900">
       <aside className="hidden w-16 shrink-0 border-r border-slate-200 bg-white/90 pt-6 sm:flex sm:flex-col sm:items-center sm:gap-4">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
@@ -69,7 +78,8 @@ export default function AppShell({ children }) {
         </main>
       </div>
       <LoadingOverlay active={loading} />
-    </div>
+      </div>
+    </AuthGuard>
   );
 }
 
@@ -148,6 +158,7 @@ function TopHeader({
               className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
             />
           </button>
+          <UserMenu />
         </div>
       </div>
     </header>
