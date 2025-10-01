@@ -1,6 +1,12 @@
 export const MAX_VISIBLE_RANK = 40;
 export const MIN_IMPRESSIONS_FOR_TOP = 5;
 
+function extractArticleId(url) {
+  if (typeof url !== "string") return null;
+  const m = url.match(/\/article\/(\d+)/);
+  return m ? m[1] : null;
+}
+
 export const clampRank = (r) =>
   r == null ? null : Math.min(r, MAX_VISIBLE_RANK);
 export const fmtRank = (r) =>
@@ -214,6 +220,15 @@ export function buildRowsFromResults(results, days, requestedPairs = []) {
       });
     }
   }
+  // 建立 article ID 到 canonical URL 的映射
+  const articleIdToCanonical = new Map();
+  for (const [key, record] of map.entries()) {
+    const articleId = extractArticleId(record.displayUrl);
+    if (articleId) {
+      articleIdToCanonical.set(articleId, record.displayUrl);
+    }
+  }
+
   for (const row of Array.isArray(results) ? results : []) {
     const dateVal = row["CAST(date AS DATE)"] || row.date || row.dt;
     const page = row.page;
@@ -237,11 +252,27 @@ export function buildRowsFromResults(results, days, requestedPairs = []) {
     const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
     const idx = dateIndex.get(label);
     if (idx == null) continue;
-    const key = `${page}||${queryStr}`;
+    
+    // 嘗試通過 article ID 找到 canonical URL
+    const articleId = extractArticleId(page);
+    const canonicalUrl = articleId ? articleIdToCanonical.get(articleId) : null;
+    const targetUrl = canonicalUrl || page;
+    
+    const key = `${targetUrl}||${queryStr}`;
     if (!map.has(key)) {
+      // 如果找不到 canonical URL 的記錄，嘗試直接使用原始 URL
+      const fallbackKey = `${page}||${queryStr}`;
+      if (map.has(fallbackKey)) {
+        const rec = map.get(fallbackKey);
+        const rank = Math.max(1, Math.min(120, Math.round(pos)));
+        rec.history[idx] = rank;
+        continue;
+      }
+      
+      // 如果都找不到，創建新記錄
       map.set(key, {
         keyword: queryStr,
-        displayUrl: page,
+        displayUrl: targetUrl,
         history: Array.from({ length: days }, () => null),
       });
     }

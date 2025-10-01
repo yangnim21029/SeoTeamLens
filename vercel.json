@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "app/api/run-csv/[id]/route.js": {
+      "maxDuration": 60
+    },
+    "app/api/page-metrics/[id]/route.js": {
+      "maxDuration": 60
+    },
+    "app/api/cache/refresh/route.js": {
+      "maxDuration": 300
+    }
+  }
+}

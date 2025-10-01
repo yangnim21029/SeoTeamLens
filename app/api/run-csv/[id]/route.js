@@ -240,11 +240,45 @@ export async function GET(req, { params }) {
         volume: p.volume ?? null,
       }));
 
-      // ✅ **修正 3: 簡化結果處理，因為 SQL 已完成大部分工作**
-      const filteredResults = Array.isArray(data?.results)
-        ? data.results.filter((row) => {
-          const pos = Number(row.weighted_avg_position);
-          const impressions = Number(row.total_impressions);
+      // ✅ **修正 3: 歸一化結果並過濾**
+      const normalizedResults = Array.isArray(data?.results) ? data.results : [];
+      const filteredResults = normalizedResults
+        .map((row) => {
+          // 歸一化 page URL
+          const rawPage = row.page ?? row.page_url ?? row.url ?? "";
+          const pageId = extractArticleId(rawPage);
+          const canonical = pageId
+            ? canonicalUrlMap.get(pageId) || rawPage
+            : rawPage;
+          
+          // 歸一化其他欄位
+          const impressions = Number(
+            row.impressions ??
+              row.total_impressions ??
+              row.sum_impressions ??
+              row.impr
+          );
+          const clicks = Number(
+            row.clicks ?? row.total_clicks ?? row.sum_clicks ?? row.click
+          );
+          const avgPosition = Number(
+            row.avg_position ?? row.avg_pos ?? row.position
+          );
+          const dateValue =
+            row.date ?? row["CAST(date AS DATE)"] ?? row.dt ?? null;
+          
+          return {
+            ...row,
+            date: dateValue,
+            page: canonical,
+            impressions: Number.isFinite(impressions) ? impressions : null,
+            clicks: Number.isFinite(clicks) ? clicks : null,
+            avg_position: Number.isFinite(avgPosition) ? avgPosition : null,
+          };
+        })
+        .filter((row) => {
+          const pos = Number(row.avg_position);
+          const impressions = Number(row.impressions);
           // 依然可以保留對排名第一且曝光過低的結果的過濾邏輯
           if (Number.isFinite(pos) && Math.round(pos) === 1) {
             if (Number.isFinite(impressions) && impressions > 0 && impressions < MIN_IMPRESSIONS_FOR_TOP) {
@@ -252,8 +286,7 @@ export async function GET(req, { params }) {
             }
           }
           return true;
-        })
-        : [];
+        });
 
       const meta = {
         rowCount: records.length,
@@ -280,6 +313,8 @@ export async function GET(req, { params }) {
     console.log(`[run-csv] Cache key: run-csv:${id}:${paramsHash}`);
     console.log("result keys:", Object.keys(cached));
     console.log("result.results length:", cached.results?.length);
+    console.log("canonicalUrlMap size:", canonicalUrlMap.size);
+    console.log("canonicalUrlMap entries:", Array.from(canonicalUrlMap.entries()).slice(0, 3));
     
     return NextResponse.json(cached, {
       status: 200,
