@@ -101,7 +101,7 @@ export default function UrlRankingPage() {
   const copy = useCallback(async (text) => {
     try {
       await navigator.clipboard.writeText(text);
-    } catch {}
+    } catch { }
   }, []);
 
   const openRawModal = useCallback(() => setShowRawModal(true), []);
@@ -291,11 +291,10 @@ function ToggleButton({ label, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition ${
-        active
+      className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition ${active
           ? "border-slate-900 bg-slate-900 text-white"
           : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-      }`}
+        }`}
     >
       {label}
     </button>
@@ -554,27 +553,124 @@ const KeywordDetailPanel = memo(function KeywordDetailPanel({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-col gap-6 lg:flex-row">
-          {/* 左側關鍵字清單 - 仿照圖片設計 */}
-          <div className="lg:w-80">
-            <div className="space-y-3">
+      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+        <div className="flex flex-col lg:flex-row">
+          {/* 左側圖表區域 */}
+          <div className="flex-1 min-w-0 p-4">
+            <div className="h-80 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={chartData}
+                  margin={{ top: 16, right: 12, bottom: 16, left: 0 }}
+                >
+                  <YAxis
+                    domain={[1, MAX_VISIBLE_RANK]}
+                    reversed
+                    tick={{ fontSize: 11 }}
+                    width={32}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    interval="preserveStartEnd"
+                    tick={{ fontSize: 11 }}
+                  />
+                  <ReferenceArea
+                    y1={1}
+                    y2={10.001}
+                    fill="#94a3b8"
+                    fillOpacity={0.18}
+                  />
+                  <ReferenceArea
+                    y1={10.001}
+                    y2={30.001}
+                    fill="#cbd5e1"
+                    fillOpacity={0.12}
+                  />
+                  <ReferenceLine
+                    y={10}
+                    stroke="#64748b"
+                    strokeDasharray="4 4"
+                    strokeOpacity={0.6}
+                    ifOverflow="extendDomain"
+                  />
+                  <ReferenceLine
+                    y={30}
+                    stroke="#94a3b8"
+                    strokeDasharray="4 4"
+                    strokeOpacity={0.5}
+                    ifOverflow="extendDomain"
+                  />
+                  <CartesianGrid
+                    horizontal
+                    vertical={false}
+                    strokeDasharray="3 3"
+                    opacity={0.2}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload || !payload.length) return null;
+                      const full = payload[0]?.payload?.fullDate || label;
+                      return (
+                        <div className="rounded-md bg-slate-900/90 px-3 py-2 text-xs text-white shadow">
+                          <div className="mb-1 font-medium">{full}</div>
+                          {payload.map((p) => {
+                            const meta = seriesMeta.find(
+                              (m) => m.dataKey === p.dataKey,
+                            );
+                            if (!meta) return null;
+                            return (
+                              <div
+                                key={p.dataKey}
+                                className="flex items-center gap-2"
+                              >
+                                <span
+                                  className="inline-block h-2 w-2 rounded-full"
+                                  style={{ backgroundColor: meta.color }}
+                                />
+                                <span className="truncate" title={meta.keyword}>
+                                  {meta.keyword}
+                                </span>
+                                <span className="ml-auto text-right">
+                                  {fmtRank(p.value)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    }}
+                  />
+                  {seriesMeta.map((meta) => (
+                    <Line
+                      key={meta.dataKey}
+                      type="monotone"
+                      dataKey={meta.dataKey}
+                      stroke={meta.color}
+                      strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={false}
+                      connectNulls
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          
+          {/* 右側關鍵字清單 - 緊密設計，無間距 */}
+          <div className="lg:w-80 border-l border-slate-200">
+            <div className="divide-y divide-slate-200">
               {seriesMeta.map((meta, index) => (
                 <div
                   key={meta.dataKey}
-                  className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm hover:shadow-md transition-shadow"
+                  className="flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     {/* 圓形圖例 */}
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="inline-block h-3 w-3 shrink-0 rounded-full border border-white shadow-sm"
-                        style={{ backgroundColor: meta.color }}
-                      />
-                      <span className="text-xs font-medium text-slate-600">
-                        {index + 1}
-                      </span>
-                    </div>
+                    <span
+                      className="inline-block h-3 w-3 shrink-0 rounded-full"
+                      style={{ backgroundColor: meta.color }}
+                    />
                     
                     {/* 關鍵字名稱 */}
                     <div className="flex-1 min-w-0">
@@ -584,30 +680,16 @@ const KeywordDetailPanel = memo(function KeywordDetailPanel({
                       >
                         {meta.keyword}
                       </div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        當前排名: {meta.current}
-                        {meta.delta !== 0 && (
-                          <span
-                            className={`ml-2 font-medium ${
-                              meta.delta > 0 
-                                ? "text-emerald-600" 
-                                : "text-rose-600"
-                            }`}
-                          >
-                            {meta.delta > 0 ? `↗ +${meta.delta}` : `↘ ${meta.delta}`}
-                          </span>
-                        )}
-                      </div>
                     </div>
                   </div>
                   
                   {/* 右側數值顯示 */}
                   <div className="text-right">
-                    <div className="text-lg font-bold text-slate-800">
+                    <div className="text-sm font-semibold text-slate-800">
                       {meta.current}
                     </div>
                     {meta.delta !== 0 && (
-                      <div className={`text-xs font-medium ${
+                      <div className={`text-xs ${
                         meta.delta > 0 ? "text-emerald-600" : "text-rose-600"
                       }`}>
                         {meta.delta > 0 ? `+${meta.delta}` : meta.delta}
@@ -616,121 +698,6 @@ const KeywordDetailPanel = memo(function KeywordDetailPanel({
                   </div>
                 </div>
               ))}
-            </div>
-            
-            {/* 圖例說明 */}
-            <div className="mt-4 p-3 bg-slate-50 rounded-lg">
-              <div className="text-xs text-slate-600 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-emerald-600">↗</span>
-                  <span>排名提升（數字變小）</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-rose-600">↘</span>
-                  <span>排名下降（數字變大）</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          {/* 右側圖表區域 */}
-          <div className="flex-1 min-w-0">
-            <div className="h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={chartData}
-                margin={{ top: 16, right: 12, bottom: 16, left: 0 }}
-              >
-                <YAxis
-                  domain={[1, MAX_VISIBLE_RANK]}
-                  reversed
-                  tick={{ fontSize: 11 }}
-                  width={32}
-                />
-                <XAxis
-                  dataKey="date"
-                  interval="preserveStartEnd"
-                  tick={{ fontSize: 11 }}
-                />
-                <ReferenceArea
-                  y1={1}
-                  y2={10.001}
-                  fill="#94a3b8"
-                  fillOpacity={0.18}
-                />
-                <ReferenceArea
-                  y1={10.001}
-                  y2={30.001}
-                  fill="#cbd5e1"
-                  fillOpacity={0.12}
-                />
-                <ReferenceLine
-                  y={10}
-                  stroke="#64748b"
-                  strokeDasharray="4 4"
-                  strokeOpacity={0.6}
-                  ifOverflow="extendDomain"
-                />
-                <ReferenceLine
-                  y={30}
-                  stroke="#94a3b8"
-                  strokeDasharray="4 4"
-                  strokeOpacity={0.5}
-                  ifOverflow="extendDomain"
-                />
-                <CartesianGrid
-                  horizontal
-                  vertical={false}
-                  strokeDasharray="3 3"
-                  opacity={0.2}
-                />
-                <Tooltip
-                  content={({ active, payload, label }) => {
-                    if (!active || !payload || !payload.length) return null;
-                    const full = payload[0]?.payload?.fullDate || label;
-                    return (
-                      <div className="rounded-md bg-slate-900/90 px-3 py-2 text-xs text-white shadow">
-                        <div className="mb-1 font-medium">{full}</div>
-                        {payload.map((p) => {
-                          const meta = seriesMeta.find(
-                            (m) => m.dataKey === p.dataKey,
-                          );
-                          if (!meta) return null;
-                          return (
-                            <div
-                              key={p.dataKey}
-                              className="flex items-center gap-2"
-                            >
-                              <span
-                                className="inline-block h-2 w-2 rounded-full"
-                                style={{ backgroundColor: meta.color }}
-                              />
-                              <span className="truncate" title={meta.keyword}>
-                                {meta.keyword}
-                              </span>
-                              <span className="ml-auto text-right">
-                                {fmtRank(p.value)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  }}
-                />
-                {seriesMeta.map((meta) => (
-                  <Line
-                    key={meta.dataKey}
-                    type="monotone"
-                    dataKey={meta.dataKey}
-                    stroke={meta.color}
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={false}
-                    connectNulls
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
             </div>
           </div>
         </div>
@@ -793,7 +760,7 @@ function readLogs(url, keyword = null) {
 function writeLogs(url, keyword = null, logs) {
   try {
     localStorage.setItem(logKey(url, keyword), JSON.stringify(logs));
-  } catch {}
+  } catch { }
 }
 
 function addLog(url, keyword, note, now = Date.now()) {
