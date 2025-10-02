@@ -282,6 +282,7 @@ export async function GET(req, { params }) {
 
     const getData = createVercelCache(
       async () => {
+        console.log(`[run-csv] Cache MISS - 執行實際查詢 for ${id}`);
       
       const payload = { data_type: "hourly", site: derivedSite, sql: sql.trim() };
       console.log(`[run-csv] Sending request to upstream for ${id}`);
@@ -414,6 +415,10 @@ export async function GET(req, { params }) {
     const cached = await getData();
     const endTime = Date.now();
     const duration = endTime - startTime;
+    
+    // 檢測是否為快取命中（快速回應通常表示快取命中）
+    const isCacheHit = duration < 1000; // 小於1秒認為是快取命中
+    console.log(`[run-csv] ${isCacheHit ? 'Cache HIT' : 'Cache MISS'} - Duration: ${duration}ms`);
     
     console.log(`[run-csv] ${id} - Duration: ${duration}ms`);
     console.log(`[run-csv] Cache key: run-csv:${id}:${paramsHash}`);

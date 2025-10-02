@@ -292,8 +292,8 @@ function ToggleButton({ label, active, onClick }) {
       type="button"
       onClick={onClick}
       className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition ${active
-          ? "border-slate-900 bg-slate-900 text-white"
-          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+        ? "border-slate-900 bg-slate-900 text-white"
+        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
         }`}
     >
       {label}
@@ -656,7 +656,7 @@ const KeywordDetailPanel = memo(function KeywordDetailPanel({
               </ResponsiveContainer>
             </div>
           </div>
-          
+
           {/* 右側關鍵字清單 - 緊密設計，無間距 */}
           <div className="lg:w-80 border-l border-slate-200">
             <div className="divide-y divide-slate-200">
@@ -671,7 +671,7 @@ const KeywordDetailPanel = memo(function KeywordDetailPanel({
                       className="inline-block h-3 w-3 shrink-0 rounded-full"
                       style={{ backgroundColor: meta.color }}
                     />
-                    
+
                     {/* 關鍵字名稱 */}
                     <div className="flex-1 min-w-0">
                       <div
@@ -682,16 +682,15 @@ const KeywordDetailPanel = memo(function KeywordDetailPanel({
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* 右側數值顯示 */}
                   <div className="text-right">
                     <div className="text-sm font-semibold text-slate-800">
                       {meta.current}
                     </div>
                     {meta.delta !== 0 && (
-                      <div className={`text-xs ${
-                        meta.delta > 0 ? "text-emerald-600" : "text-rose-600"
-                      }`}>
+                      <div className={`text-xs ${meta.delta > 0 ? "text-emerald-600" : "text-rose-600"
+                        }`}>
                         {meta.delta > 0 ? `+${meta.delta}` : meta.delta}
                       </div>
                     )}

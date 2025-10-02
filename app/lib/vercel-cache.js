@@ -13,8 +13,15 @@ export function createVercelCache(fn, keyParts, options = {}) {
     .join(':')
     .slice(0, 200); // 限制總長度
 
+  console.log(`[VercelCache] Creating cache with key: ${cacheKey}, tags: ${tags.join(',')}`);
+
   return unstable_cache(
-    fn,
+    async (...args) => {
+      console.log(`[VercelCache] Cache MISS for key: ${cacheKey}`);
+      const result = await fn(...args);
+      console.log(`[VercelCache] Cached result for key: ${cacheKey}, size: ${JSON.stringify(result).length} bytes`);
+      return result;
+    },
     [cacheKey],
     {
       revalidate,

@@ -12,23 +12,33 @@ export async function GET(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 獲取環境資訊
-    const envInfo = {
+    // 收集環境資訊
+    const environment = {
       isVercel: process.env.VERCEL === '1',
-      nodeEnv: process.env.NODE_ENV,
       region: process.env.VERCEL_REGION || 'unknown',
-      runtime: 'nodejs',
+      nodeEnv: process.env.NODE_ENV,
       timestamp: new Date().toISOString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
 
-    // 獲取快取統計
-    const cacheStats = getCacheStats();
-    
+    // 收集快取統計（Simple Cache - 雖然現在不用了，但保留檢查）
+    const simpleCacheStats = getCacheStats();
+
+    // 檢查 Next.js Cache 的狀態（這個比較難直接檢查）
+    const nextCacheInfo = {
+      note: "Next.js unstable_cache 狀態無法直接檢查",
+      revalidateSupported: typeof revalidateTag !== 'undefined',
+    };
+
     return NextResponse.json({
-      status: 'ok',
-      environment: envInfo,
-      cache: cacheStats,
-      message: 'Cache system is operational'
+      success: true,
+      timestamp: new Date().toISOString(),
+      environment,
+      cacheStats: {
+        simpleCache: simpleCacheStats,
+        nextCache: nextCacheInfo,
+      },
+      message: "快取系統狀態檢查完成"
     });
 
   } catch (error) {
@@ -39,5 +49,3 @@ export async function GET(req) {
     }, { status: 500 });
   }
 }
-
-export const runtime = "nodejs";
