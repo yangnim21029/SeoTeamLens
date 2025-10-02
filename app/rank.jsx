@@ -555,39 +555,86 @@ const KeywordDetailPanel = memo(function KeywordDetailPanel({
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-col gap-4 sm:flex-row">
-          <div className="flex flex-col gap-2 sm:w-60">
-            {seriesMeta.map((meta) => (
-              <div
-                key={meta.dataKey}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
-              >
-                <span
-                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: meta.color }}
-                />
-                <div className="flex-1">
-                  <div
-                    className="font-medium leading-snug"
-                    title={meta.keyword}
-                  >
-                    {meta.keyword}
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    {meta.current}
-                    {meta.delta !== 0 && (
+        <div className="flex flex-col gap-6 lg:flex-row">
+          {/* 左側關鍵字清單 - 仿照圖片設計 */}
+          <div className="lg:w-80">
+            <div className="space-y-3">
+              {seriesMeta.map((meta, index) => (
+                <div
+                  key={meta.dataKey}
+                  className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {/* 圓形圖例 */}
+                    <div className="flex items-center gap-2">
                       <span
-                        className={`ml-2 ${meta.delta > 0 ? "text-emerald-600" : "text-rose-600"}`}
-                      >
-                        {meta.delta > 0 ? `+${meta.delta}` : meta.delta}
+                        className="inline-block h-3 w-3 shrink-0 rounded-full border border-white shadow-sm"
+                        style={{ backgroundColor: meta.color }}
+                      />
+                      <span className="text-xs font-medium text-slate-600">
+                        {index + 1}
                       </span>
+                    </div>
+                    
+                    {/* 關鍵字名稱 */}
+                    <div className="flex-1 min-w-0">
+                      <div
+                        className="font-medium text-sm text-slate-800 truncate"
+                        title={meta.keyword}
+                      >
+                        {meta.keyword}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        當前排名: {meta.current}
+                        {meta.delta !== 0 && (
+                          <span
+                            className={`ml-2 font-medium ${
+                              meta.delta > 0 
+                                ? "text-emerald-600" 
+                                : "text-rose-600"
+                            }`}
+                          >
+                            {meta.delta > 0 ? `↗ +${meta.delta}` : `↘ ${meta.delta}`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 右側數值顯示 */}
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-slate-800">
+                      {meta.current}
+                    </div>
+                    {meta.delta !== 0 && (
+                      <div className={`text-xs font-medium ${
+                        meta.delta > 0 ? "text-emerald-600" : "text-rose-600"
+                      }`}>
+                        {meta.delta > 0 ? `+${meta.delta}` : meta.delta}
+                      </div>
                     )}
                   </div>
                 </div>
+              ))}
+            </div>
+            
+            {/* 圖例說明 */}
+            <div className="mt-4 p-3 bg-slate-50 rounded-lg">
+              <div className="text-xs text-slate-600 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-600">↗</span>
+                  <span>排名提升（數字變小）</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-rose-600">↘</span>
+                  <span>排名下降（數字變大）</span>
+                </div>
               </div>
-            ))}
+            </div>
           </div>
-          <div className="h-72 w-full sm:flex-1">
+          {/* 右側圖表區域 */}
+          <div className="flex-1 min-w-0">
+            <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={chartData}
@@ -684,6 +731,7 @@ const KeywordDetailPanel = memo(function KeywordDetailPanel({
                 ))}
               </LineChart>
             </ResponsiveContainer>
+            </div>
           </div>
         </div>
       </div>
