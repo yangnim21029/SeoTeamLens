@@ -45,6 +45,15 @@ function refreshCache() {
     
     if (responseCode === 200 && responseData.success) {
       console.log(`✅ 快取刷新成功！專案數: ${responseData.projects?.length || 0}`);
+      console.log(`刷新的 URL 數: ${responseData.refreshedUrls?.length || 0}`);
+      
+      // 等待 2 秒讓 cache 完全寫入
+      Utilities.sleep(2000);
+      
+      // 檢查 Redis cache 狀態
+      console.log('檢查 Redis cache 狀態...');
+      checkCacheCount();
+      
       return responseData;
     } else {
       const errorDetail = responseData.error || responseData.details;
@@ -58,6 +67,51 @@ function refreshCache() {
 }
 
 
+
+/**
+ * 檢查 Redis cache 數量
+ */
+function checkCacheCount() {
+  try {
+    const response = UrlFetchApp.fetch(`${CONFIG.SITE_URL}/api/debug/redis-keys?secret=${CONFIG.SECRET}`);
+    const data = JSON.parse(response.getContentText());
+    
+    if (data.success) {
+      console.log('📊 Redis Cache 統計:');
+      console.log(`總 keys: ${data.total_keys}`);
+      console.log(`- Projects: ${data.keys_by_type.projects}`);
+      console.log(`- Run-CSV: ${data.keys_by_type['run-csv']}`);
+      console.log(`- Page-Metrics: ${data.keys_by_type['page-metrics']}`);
+      
+      // 計算預期數量
+      const expectedProjects = 1;
+      const expectedPerApi = 8 * CONFIG.DAYS.length; // 8 專案 × 天數
+      const expectedTotal = expectedProjects + expectedPerApi * 2; // projects + run-csv + page-metrics
+      
+      console.log('🎯 預期數量:');
+      console.log(`- Projects: ${expectedProjects}`);
+      console.log(`- Run-CSV: ${expectedPerApi} (8專案 × ${CONFIG.DAYS.length}天數)`);
+      console.log(`- Page-Metrics: ${expectedPerApi} (8專案 × ${CONFIG.DAYS.length}天數)`);
+      console.log(`- 總計: ${expectedTotal}`);
+      
+      // 檢查是否符合預期
+      const actualTotal = data.total_keys;
+      if (actualTotal >= expectedTotal * 0.9) { // 允許 10% 誤差
+        console.log('✅ Cache 數量正常！');
+      } else {
+        console.log(`⚠️ Cache 數量可能不足 (實際: ${actualTotal}, 預期: ${expectedTotal})`);
+      }
+      
+      return data;
+    } else {
+      console.error('❌ 無法檢查 cache 狀態:', data.error);
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ 檢查 cache 數量失敗:', error.message);
+    return null;
+  }
+}
 
 /**
  * 獲取所有專案列表（用於設定參考）

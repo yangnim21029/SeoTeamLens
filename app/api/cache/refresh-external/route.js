@@ -58,11 +58,12 @@ export async function POST(req) {
     for (const project of targetProjects) {
       if (!project?.id) continue;
 
+      // 先清除該專案的所有 Redis 快取（只清除一次）
+      await invalidateCachePattern(`run-csv:${project.id}:*`);
+      await invalidateCachePattern(`page-metrics:${project.id}:*`);
+
+      // 然後為每個天數建立新的快取
       for (const dayCount of days) {
-        // 清除 Redis 快取
-        await invalidateCachePattern(`run-csv:${project.id}:*`);
-        await invalidateCachePattern(`page-metrics:${project.id}:*`);
-        
         refreshedTags.push(`run-csv:${project.id}:${dayCount}days`, `page-metrics:${project.id}:${dayCount}days`);
 
         // 預熱快取：實際呼叫 API 來重新產生快取
