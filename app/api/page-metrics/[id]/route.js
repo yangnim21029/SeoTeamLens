@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
 import crypto from "node:crypto";
 
 import { getProjectById } from "@/app/lib/projects-store";
-import { createRedisCache } from "@/app/lib/redis-cache";
+import { createRedisCache, invalidateCache } from "@/app/lib/redis-cache";
 import { vercelFetch } from "@/app/lib/vercel-cache";
 
 function safeEncodeUrl(url) {
@@ -227,9 +226,10 @@ export async function GET(req, { params }) {
       days,
       limit,
     });
-    const tag = `page-metrics:${id}`;
+    // 如果請求刷新，清除對應的 Redis 快取
     if (refresh) {
-      revalidateTag(tag);
+      console.log(`[page-metrics] Clearing Redis cache for ${id}, days=${days}`);
+      await invalidateCache(["page-metrics", id, paramsHash]);
     }
 
     const getData = createRedisCache(

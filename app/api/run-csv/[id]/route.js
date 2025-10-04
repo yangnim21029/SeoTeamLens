@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
 import crypto from "node:crypto";
 import { getProjectById } from "@/app/lib/projects-store";
-import { createRedisCache } from "@/app/lib/redis-cache";
+import { createRedisCache, invalidateCache } from "@/app/lib/redis-cache";
 import { vercelFetch } from "@/app/lib/vercel-cache";
 
 // 常數定義
@@ -269,16 +268,11 @@ export async function GET(req, { params }) {
     `;
 
     const paramsHash = hashKey({ id, site: derivedSite, days });
-    const tag = `run-csv:${id}`;
     
-    // 如果請求刷新，清除 Vercel 快取
-    // 
-    // 改用 Vercel Cache 而不是 Simple Cache 的原因：
-    // 1. Vercel Cache 在 serverless 環境中會持久化，跨 function 實例有效
-    // 2. 支援 revalidateTag() 來清除特定標籤的快取，讓 cronjob 刷新有效
-    // 3. Simple Cache 只存在於記憶體中，每次冷啟動會重置，不適合 Vercel 環境
+    // 如果請求刷新，清除對應的 Redis 快取
     if (refresh) {
-      revalidateTag(tag);
+      console.log(`[run-csv] Clearing Redis cache for ${id}, days=${days}`);
+      await invalidateCache(["run-csv", id, paramsHash]);
     }
 
     const getData = createRedisCache(
