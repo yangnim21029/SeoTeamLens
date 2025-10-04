@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
+import { invalidateCachePattern } from "@/app/lib/redis-cache";
 
 // 專門給外部 cronjob 使用的快取刷新端點，不需要登入
 export async function POST(req) {
@@ -59,12 +59,9 @@ export async function POST(req) {
       if (!project?.id) continue;
 
       for (const dayCount of days) {
-        // 刷新 Vercel 快取標籤
-        const runCsvTag = `run-csv:${project.id}`;
-        const pageMetricsTag = `page-metrics:${project.id}`;
-        
-        revalidateTag(runCsvTag);
-        revalidateTag(pageMetricsTag);
+        // 清除 Redis 快取
+        await invalidateCachePattern(`run-csv:${project.id}:*`);
+        await invalidateCachePattern(`page-metrics:${project.id}:*`);
         
         refreshedTags.push(`${runCsvTag}:${dayCount}days`, `${pageMetricsTag}:${dayCount}days`);
 

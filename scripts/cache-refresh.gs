@@ -1,20 +1,22 @@
 /**
- * Google Apps Script 自動刷新快取
+ * Google Apps Script 自動刷新 Redis 快取
  * 
  * 設定方式：
  * 1. 在 Google Apps Script 中創建新專案
  * 2. 貼上這段程式碼
  * 3. 設定觸發器（Triggers）來定期執行
  * 4. 修改下面的設定值
+ * 
+ * 注意：現在使用 Redis 作為快取後端，TTL 為 4 小時自動過期
  */
 
 // ========== 設定區域 ==========
 const CONFIG = {
   // 你的網站 URL
-  SITE_URL: 'https://your-domain.com',
+  SITE_URL: 'https://seo-team-lens.vercel.app',
   
   // 快取刷新的密鑰（與 CACHE_REFRESH_SECRET 環境變數相同）
-  SECRET: 'your-secret-key',
+  SECRET: 'awefjwefantqbekjw',
   
   // 要刷新的專案 ID 列表（留空則刷新所有專案）
   PROJECT_IDS: [
@@ -59,8 +61,8 @@ function refreshCache() {
       muteHttpExceptions: true // 避免 4xx/5xx 錯誤拋出異常
     };
     
-    console.log('發送請求到:', `${CONFIG.SITE_URL}/api/cache/refresh`);
-    const response = UrlFetchApp.fetch(`${CONFIG.SITE_URL}/api/cache/refresh`, options);
+    console.log('發送請求到:', `${CONFIG.SITE_URL}/api/cache/refresh-external`);
+    const response = UrlFetchApp.fetch(`${CONFIG.SITE_URL}/api/cache/refresh-external`, options);
     const responseCode = response.getResponseCode();
     const responseText = response.getContentText();
     
@@ -195,7 +197,7 @@ function testSingleProject() {
   };
   
   try {
-    const response = UrlFetchApp.fetch(`${CONFIG.SITE_URL}/api/cache/refresh`, options);
+    const response = UrlFetchApp.fetch(`${CONFIG.SITE_URL}/api/cache/refresh-external`, options);
     const result = JSON.parse(response.getContentText());
     console.log('單一專案測試結果:', result);
   } catch (error) {
@@ -254,11 +256,39 @@ function getProjectList() {
 }
 
 /**
- * 檢查 Vercel 快取系統狀態
+ * 檢查 Redis 快取系統狀態
  */
 function checkCacheStatus() {
   try {
-    console.log('檢查快取系統狀態...');
+    console.log('檢查 Redis 快取系統狀態...');
+    
+    const url = `${CONFIG.SITE_URL}/api/cache/redis-status?secret=${CONFIG.SECRET}`;
+    const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    const responseCode = response.getResponseCode();
+    const data = JSON.parse(response.getContentText());
+    
+    if (responseCode === 200) {
+      console.log('✅ Redis 快取系統狀態正常');
+      console.log('Redis URL 設定:', data.redis_url);
+      console.log('快取狀態:', data.cache_status);
+      console.log('時間戳:', data.timestamp);
+      return data;
+    } else {
+      console.error('❌ Redis 快取系統狀態檢查失敗:', data.error);
+      return null;
+    }
+  } catch (error) {
+    console.error('檢查 Redis 狀態時發生錯誤:', error.message);
+    return null;
+  }
+}
+
+/**
+ * 檢查 Vercel 快取系統狀態（保留作為備用）
+ */
+function checkVercelCacheStatus() {
+  try {
+    console.log('檢查 Vercel 快取系統狀態...');
     
     const url = `${CONFIG.SITE_URL}/api/cache/status?secret=${CONFIG.SECRET}`;
     const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
@@ -266,18 +296,18 @@ function checkCacheStatus() {
     const data = JSON.parse(response.getContentText());
     
     if (responseCode === 200) {
-      console.log('✅ 快取系統狀態正常');
+      console.log('✅ Vercel 快取系統狀態正常');
       console.log('環境資訊:', data.environment);
       console.log('是否為 Vercel:', data.environment.isVercel);
       console.log('區域:', data.environment.region);
       console.log('時間戳:', data.environment.timestamp);
       return data;
     } else {
-      console.error('❌ 快取系統狀態檢查失敗:', data.error);
+      console.error('❌ Vercel 快取系統狀態檢查失敗:', data.error);
       return null;
     }
   } catch (error) {
-    console.error('檢查快取狀態時發生錯誤:', error.message);
+    console.error('檢查 Vercel 狀態時發生錯誤:', error.message);
     return null;
   }
 }

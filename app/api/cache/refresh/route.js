@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
+import { invalidateCachePattern } from "@/app/lib/redis-cache";
 import { requireAdmin } from "@/app/lib/auth";
 
 export const POST = requireAdmin(async (req) => {
@@ -66,12 +66,9 @@ export const POST = requireAdmin(async (req) => {
       if (!project?.id) continue;
 
       for (const dayCount of days) {
-        // 刷新 Next.js 快取標籤
-        const runCsvTag = `run-csv:${project.id}`;
-        const pageMetricsTag = `page-metrics:${project.id}`;
-        
-        revalidateTag(runCsvTag);
-        revalidateTag(pageMetricsTag);
+        // 清除 Redis 快取
+        await invalidateCachePattern(`run-csv:${project.id}:*`);
+        await invalidateCachePattern(`page-metrics:${project.id}:*`);
         
         refreshedTags.push(`${runCsvTag}:${dayCount}days`, `${pageMetricsTag}:${dayCount}days`);
 

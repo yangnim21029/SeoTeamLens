@@ -41,7 +41,7 @@ export async function POST(request) {
         last_updated = NOW();
     `;
 
-    invalidateProjectsCache();
+    await invalidateProjectsCache();
 
     return NextResponse.json({ message: `Sheet '${sheetName}' synced successfully.` }, { status: 200 });
   } catch (error) {

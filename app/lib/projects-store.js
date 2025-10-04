@@ -1,9 +1,5 @@
 import { sql } from "@vercel/postgres";
-
-const CACHE_TTL_MS = 60 * 1000;
-
-let cachedProjects = null;
-let cacheExpiresAt = 0;
+import { createRedisCache, invalidateCache } from "./redis-cache.js";
 
 function extractRecords(json) {
   if (Array.isArray(json)) {
@@ -55,19 +51,25 @@ function parseProjectRow(row) {
   };
 }
 
-async function refreshCache() {
-  const { rows } = await sql`SELECT sheet_name, json_data, last_updated FROM synced_data`;
-  const projects = rows.map(parseProjectRow).filter((project) => Array.isArray(project.rows));
-  cachedProjects = projects;
-  cacheExpiresAt = Date.now() + CACHE_TTL_MS;
-  return projects;
-}
+// 建立 Redis cache 包裝器
+const getCachedProjects = createRedisCache(
+  async () => {
+    console.log("Refreshing projects cache...");
+    const { rows } = await sql`SELECT sheet_name, json_data, last_updated FROM synced_data`;
+    const projects = rows.map(parseProjectRow).filter((project) => Array.isArray(project.rows));
+    console.log(`Cached ${projects.length} projects`);
+    return projects;
+  },
+  ['projects'], // cache key
+  { ttl: 14400 } // 4 hours
+);
 
 async function getProjectsInternal({ force = false } = {}) {
-  if (!force && cachedProjects && cacheExpiresAt > Date.now()) {
-    return cachedProjects;
+  if (force) {
+    // 如果強制刷新，先清除快取
+    await invalidateCache(['projects']);
   }
-  return refreshCache();
+  return await getCachedProjects();
 }
 
 export async function loadProjectSummaries() {
@@ -100,7 +102,6 @@ export async function getProjectById(id) {
   };
 }
 
-export function invalidateProjectsCache() {
-  cachedProjects = null;
-  cacheExpiresAt = 0;
+export async function invalidateProjectsCache() {
+  await invalidateCache(['projects']);
 }

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import crypto from "node:crypto";
 import { getProjectById } from "@/app/lib/projects-store";
-import { createVercelCache, vercelFetch } from "@/app/lib/vercel-cache";
+import { createRedisCache } from "@/app/lib/redis-cache";
+import { vercelFetch } from "@/app/lib/vercel-cache";
 
 // 常數定義
 const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
@@ -280,7 +281,7 @@ export async function GET(req, { params }) {
       revalidateTag(tag);
     }
 
-    const getData = createVercelCache(
+    const getData = createRedisCache(
       async () => {
         console.log(`[run-csv] Cache MISS - 執行實際查詢 for ${id}`);
       
@@ -403,12 +404,11 @@ export async function GET(req, { params }) {
 
       const dataOut = { ...data, results: filteredResults };
       return { ...dataOut, requested, meta };
+      const dataOut = { ...data, results: filteredResults };
+      return { ...dataOut, requested, meta };
     },
     ["run-csv", id, paramsHash],
-    { 
-      revalidate: FOUR_HOUR_SECONDS, 
-      tags: [tag] 
-    }
+    { ttl: 14400 } // 4 hours
   );
 
     const startTime = Date.now();

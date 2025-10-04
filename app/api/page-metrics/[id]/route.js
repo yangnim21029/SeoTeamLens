@@ -3,7 +3,8 @@ import { revalidateTag } from "next/cache";
 import crypto from "node:crypto";
 
 import { getProjectById } from "@/app/lib/projects-store";
-import { createVercelCache, vercelFetch } from "@/app/lib/vercel-cache";
+import { createRedisCache } from "@/app/lib/redis-cache";
+import { vercelFetch } from "@/app/lib/vercel-cache";
 
 function safeEncodeUrl(url) {
   if (!url || typeof url !== "string") return url;
@@ -231,7 +232,7 @@ export async function GET(req, { params }) {
       revalidateTag(tag);
     }
 
-    const getData = createVercelCache(
+    const getData = createRedisCache(
       async () => {
         const payload = { data_type: "hourly", site: derivedSite, sql: sql.trim() };
         const res = await vercelFetch(UPSTREAM, {
@@ -291,9 +292,10 @@ export async function GET(req, { params }) {
           lastUpdated: project.lastUpdated ?? null,
         };
         return { ...data, results: normalized, meta };
+        return { ...data, results: normalized };
       },
       ["page-metrics", id, paramsHash],
-      { revalidate: FOUR_HOUR_SECONDS, tags: [tag] }
+      { ttl: 14400 } // 4 hours
     );
 
     const startTime = Date.now();
