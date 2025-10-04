@@ -32,9 +32,9 @@ export async function GET(req) {
     // 獲取前幾筆資料樣本
     const sampleData = await sql`
       SELECT sheet_name, 
-             LENGTH(json_data) as json_length,
+             LENGTH(json_data::text) as json_length,
              last_updated,
-             SUBSTRING(json_data, 1, 100) as json_preview
+             LEFT(json_data::text, 100) as json_preview
       FROM synced_data 
       ORDER BY last_updated DESC 
       LIMIT 5

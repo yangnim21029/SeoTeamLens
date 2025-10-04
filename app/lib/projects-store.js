@@ -58,14 +58,14 @@ const getCachedProjects = createRedisCache(
     try {
       const { rows } = await sql`SELECT sheet_name, json_data, last_updated FROM synced_data`;
       console.log(`Found ${rows.length} raw rows from database`);
-      
+
       const projects = rows.map(parseProjectRow).filter((project) => Array.isArray(project.rows));
       console.log(`Cached ${projects.length} valid projects`);
-      
+
       if (projects.length === 0) {
         console.warn("No valid projects found in database");
       }
-      
+
       return projects;
     } catch (error) {
       console.error("Error fetching projects from database:", error);
