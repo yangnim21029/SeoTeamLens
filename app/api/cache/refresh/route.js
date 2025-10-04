@@ -70,7 +70,7 @@ export const POST = requireAdmin(async (req) => {
         await invalidateCachePattern(`run-csv:${project.id}:*`);
         await invalidateCachePattern(`page-metrics:${project.id}:*`);
         
-        refreshedTags.push(`${runCsvTag}:${dayCount}days`, `${pageMetricsTag}:${dayCount}days`);
+        refreshedTags.push(`run-csv:${project.id}:${dayCount}days`, `page-metrics:${project.id}:${dayCount}days`);
 
         // 預熱快取：實際呼叫 API 來重新產生快取
         try {
