@@ -292,7 +292,6 @@ export async function GET(req, { params }) {
           lastUpdated: project.lastUpdated ?? null,
         };
         return { ...data, results: normalized, meta };
-        return { ...data, results: normalized };
       },
       ["page-metrics", id, paramsHash],
       { ttl: 14400 } // 4 hours

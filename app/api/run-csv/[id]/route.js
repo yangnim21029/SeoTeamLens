@@ -404,8 +404,6 @@ export async function GET(req, { params }) {
 
       const dataOut = { ...data, results: filteredResults };
       return { ...dataOut, requested, meta };
-      const dataOut = { ...data, results: filteredResults };
-      return { ...dataOut, requested, meta };
     },
     ["run-csv", id, paramsHash],
     { ttl: 14400 } // 4 hours
