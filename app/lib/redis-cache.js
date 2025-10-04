@@ -51,15 +51,24 @@ export async function createRedisCache(fn, keyParts, options = {}) {
       const result = await fn(...args);
       
       // 儲存到 Redis 並設定 TTL
-      await client.setEx(cacheKey, ttl, JSON.stringify(result));
-      
-      console.log(`[RedisCache] Cached result for key: ${cacheKey}, TTL: ${ttl}s, size: ${JSON.stringify(result).length} bytes`);
+      try {
+        await client.setEx(cacheKey, ttl, JSON.stringify(result));
+        console.log(`[RedisCache] Cached result for key: ${cacheKey}, TTL: ${ttl}s, size: ${JSON.stringify(result).length} bytes`);
+      } catch (setError) {
+        console.error(`[RedisCache] Failed to cache result for key ${cacheKey}:`, setError);
+        // 繼續返回結果，即使快取失敗
+      }
       
       return result;
     } catch (error) {
       console.error(`[RedisCache] Error for key ${cacheKey}:`, error);
       // 如果 Redis 出錯，直接執行原始函數
-      return await fn(...args);
+      try {
+        return await fn(...args);
+      } catch (fnError) {
+        console.error(`[RedisCache] Original function also failed for key ${cacheKey}:`, fnError);
+        throw fnError;
+      }
     }
   };
 }
