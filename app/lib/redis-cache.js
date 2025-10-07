@@ -26,7 +26,7 @@ async function getRedisClient() {
 // Redis Cache 包裝器
 export function createRedisCache(fn, keyParts, options = {}) {
   const {
-    ttl = 14400, // 4 hours in seconds
+    ttl = 86400, // 24 hours in seconds
     prefix = 'ranklens',
   } = options;
 

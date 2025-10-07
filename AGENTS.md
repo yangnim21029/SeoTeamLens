@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `app/` hosts the Next.js App Router: `page.js` for the landing view, `overview/` for summary segments, `rank.jsx` for the keyword dashboard, and server routes under `app/api/*`.
+- `app/` hosts the Next.js App Router: `page.js` for the landing view, `kw-overview/` and `edit-overview/` for summary segments, `rank.jsx` for the keyword dashboard, and server routes under `app/api/*`.
 - `app/components` holds reusable UI, `app/context` exposes shared providers, and `app/lib` contains data utilities—keep new modules in these folders instead of nesting inside route files.
 - `public/` serves static assets, while `scripts/` stores operational helpers such as `count_keywords.mjs` for CSV hygiene.
 - `legacy/` preserves the earlier Apps Script flow; treat it as read-only unless you are migrating logic into the primary `app/` tree.
@@ -18,7 +18,7 @@
 - Respect `biome.json`: two-space indentation, double quotes in JS/TS, and trailing commas where supported.
 - Component, context, and provider files use PascalCase (`AppShell.jsx`, `RankDataProvider`), while hooks and utilities use camelCase (`useRankData`, `clampRank`).
 - Prefer Tailwind utility classes; extend shared tokens via the `@theme inline` block inside `app/globals.css`.
-- Keep route-specific helpers near their segment (`app/overview/*`); elevate widely used code into `app/lib`.
+- Keep route-specific helpers near their segment (`app/kw-overview/*`, `app/edit-overview/*`); elevate widely used code into `app/lib`.
 
 ## Testing Guidelines
 - No automated suite exists yet—introduce Jest or Vitest under `app/**/__tests__` or `tests/` and mirror route names (`rank.test.jsx`).

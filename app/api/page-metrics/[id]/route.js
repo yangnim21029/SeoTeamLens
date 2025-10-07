@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { getProjectById } from "@/app/lib/projects-store";
 import { createRedisCache, invalidateCache } from "@/app/lib/redis-cache";
 import { vercelFetch } from "@/app/lib/vercel-cache";
+import { getGscDbEndpoint } from "@/app/lib/gsc-endpoint";
 
 function safeEncodeUrl(url) {
   if (!url || typeof url !== "string") return url;
@@ -28,8 +29,12 @@ function safeEncodeUrl(url) {
   }
 }
 
-const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
-const FOUR_HOUR_SECONDS = 4 * 60 * 60;
+const rankQueryOverride = process.env.RANK_QUERY_API;
+const UPSTREAM =
+  typeof rankQueryOverride === "string" && rankQueryOverride.trim()
+    ? rankQueryOverride.trim()
+    : getGscDbEndpoint();
+const CACHE_TTL_SECONDS = 24 * 60 * 60;
 
 function extractArticleId(url) {
   if (typeof url !== "string") return null;
@@ -294,7 +299,7 @@ export async function GET(req, { params }) {
         return { ...data, results: normalized, meta };
       },
       ["page-metrics", id, paramsHash],
-      { ttl: 14400 } // 4 hours
+      { ttl: CACHE_TTL_SECONDS } // 24 hours
     );
 
     const startTime = Date.now();
@@ -312,7 +317,7 @@ export async function GET(req, { params }) {
     return NextResponse.json(cached, {
       status: 200,
       headers: {
-        "Cache-Control": "s-maxage=14400, stale-while-revalidate=86400",
+        "Cache-Control": `s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=${CACHE_TTL_SECONDS}`,
         "X-Cache-Duration": duration.toString(),
         "X-Cache-Key": `page-metrics:${safeId.slice(0, 20)}:${paramsHash.slice(0, 8)}`,
       },

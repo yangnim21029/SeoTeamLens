@@ -3,11 +3,16 @@ import crypto from "node:crypto";
 import { getProjectById } from "@/app/lib/projects-store";
 import { createRedisCache, invalidateCache } from "@/app/lib/redis-cache";
 import { vercelFetch } from "@/app/lib/vercel-cache";
+import { getGscDbEndpoint } from "@/app/lib/gsc-endpoint";
 
 // 常數定義
-const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
+const rankQueryOverride = process.env.RANK_QUERY_API;
+const UPSTREAM =
+  typeof rankQueryOverride === "string" && rankQueryOverride.trim()
+    ? rankQueryOverride.trim()
+    : getGscDbEndpoint();
 const MIN_IMPRESSIONS_FOR_TOP = 5;
-const FOUR_HOUR_SECONDS = 4 * 60 * 60;
+const CACHE_TTL_SECONDS = 24 * 60 * 60;
 
 // ========================================================================
 // ## 輔助函式 (Helper Functions)
@@ -163,8 +168,18 @@ export async function GET(req, { params }) {
     // ▼▼▼ 請在這裡加入偵錯程式碼 ▼▼▼
     console.log("--- DEBUG START ---");
     console.log("Project ID:", id);
-    if (project && project.rows) {
-      console.log("project.rows[0]:", JSON.stringify(project.rows[0], null, 2));
+    if (project && Array.isArray(project.rows) && project.rows.length) {
+      const firstRow = project.rows[0];
+      console.log("project.rows[0]:", JSON.stringify(firstRow, null, 2));
+      console.log("project.rows[0] keys:", Object.keys(firstRow));
+      const editorKey = Object.keys(firstRow).find((key) =>
+        typeof key === "string" && key.toLowerCase().includes("editor"),
+      );
+      if (editorKey) {
+        console.log(`project.rows[0].${editorKey}:`, firstRow[editorKey]);
+      } else {
+        console.log("project.rows[0] has no field matching 'editor'.");
+      }
     } else {
       console.log("project.rows is missing, null, or empty.");
     }
@@ -400,7 +415,7 @@ export async function GET(req, { params }) {
       return { ...dataOut, requested, meta };
     },
     ["run-csv", id, paramsHash],
-    { ttl: 14400 } // 4 hours
+    { ttl: CACHE_TTL_SECONDS } // 24 hours
   );
 
     const startTime = Date.now();
@@ -440,7 +455,7 @@ export async function GET(req, { params }) {
     return NextResponse.json(cleanResponse, {
       status: 200,
       headers: { 
-        "Cache-Control": "s-maxage=14400, stale-while-revalidate=86400",
+        "Cache-Control": `s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=${CACHE_TTL_SECONDS}`,
         "X-Cache-Duration": duration.toString(),
         "X-Cache-Key": `run-csv:${safeId}:${paramsHash.slice(0, 8)}`,
       },

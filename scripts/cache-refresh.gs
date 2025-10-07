@@ -15,7 +15,10 @@ const CONFIG = {
   SITE_URL: 'https://seo-team-lens.vercel.app',
   SECRET: 'awefjwefantqbekjw',
   PROJECT_IDS: [], // 空陣列表示刷新所有專案
-  DAYS: [7, 30, 60]
+  // 前端實際請求的天數：fetchDays = Math.max(windowDays * 2, windowDays)
+  // windowDays 可能的值: 7, 30, 60
+  // 對應的 fetchDays: 14, 60, 120
+  DAYS: [14, 60, 120] // 更新為前端實際會請求的天數
 };
 
 /**
@@ -90,8 +93,8 @@ function checkCacheCount() {
       
       console.log('🎯 預期數量:');
       console.log(`- Projects: ${expectedProjects}`);
-      console.log(`- Run-CSV: ${expectedPerApi} (8專案 × ${CONFIG.DAYS.length}天數)`);
-      console.log(`- Page-Metrics: ${expectedPerApi} (8專案 × ${CONFIG.DAYS.length}天數)`);
+      console.log(`- Run-CSV: ${expectedPerApi} (8專案 × ${CONFIG.DAYS.length}天數: ${CONFIG.DAYS.join(', ')})`);
+      console.log(`- Page-Metrics: ${expectedPerApi} (8專案 × ${CONFIG.DAYS.length}天數: ${CONFIG.DAYS.join(', ')})`);
       console.log(`- 總計: ${expectedTotal}`);
       
       // 檢查是否符合預期

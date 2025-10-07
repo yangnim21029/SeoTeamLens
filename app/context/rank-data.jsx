@@ -19,7 +19,7 @@ import {
   safeDecodeURL,
   safeRank,
   trendDelta,
-  MAX_VISIBLE_RANK,
+  MAX_VISIBLE_RANK
 } from "../lib/rank-utils";
 
 const RankDataContext = createContext(null);
@@ -102,6 +102,7 @@ export function RankDataProvider({ children }) {
   const [pageTrafficLoading, setPageTrafficLoading] = useState(false);
   const [pageTrafficError, setPageTrafficError] = useState("");
   const [pageMetricsMeta, setPageMetricsMeta] = useState(null);
+  const [projectRowsFull, setProjectRowsFull] = useState([]);
 
   const projectIdRef = useRef("");
   const projectsLoadedRef = useRef(false);
@@ -230,6 +231,7 @@ export function RankDataProvider({ children }) {
       setPageTrafficRows([]);
       setPageMetricsMeta(null);
       setPageTrafficError("");
+      setProjectRowsFull([]);
       return;
     }
     let aborted = false;
@@ -253,11 +255,18 @@ export function RankDataProvider({ children }) {
         const pageMetricsUrl = `/api/page-metrics/${projectId}?${pageMetricsParams.join("&")}${ts}`;
         
         // 並行調用兩個 API
-        const [runCsvResponse, pageMetricsResponse] = await Promise.all([
+        const projectDataUrl = `/api/data/${projectId}${ts}`;
+        const [runCsvResponse, pageMetricsResponse, projectDataResponse] = await Promise.all([
           fetch(runCsvUrl, { method: "GET", cache: "no-store" }),
-          pageMetricsRequested || forceRefresh 
+          pageMetricsRequested || forceRefresh
             ? fetch(pageMetricsUrl, { method: "GET", cache: "no-store" })
-            : Promise.resolve(null)
+            : Promise.resolve(null),
+          fetch(projectDataUrl, { method: "GET", cache: "no-store" }).catch(
+            (err) => {
+              console.error("Failed to fetch project detail:", err);
+              return null;
+            },
+          ),
         ]);
         
         // 處理 run-csv API 回應
@@ -298,11 +307,29 @@ export function RankDataProvider({ children }) {
             Array.isArray(runCsvJson?.requested) ? runCsvJson.requested : [],
           );
           setKeywordMetricsReady(includeKeywordMetrics);
-          
+
           // 設定 page-metrics 資料
           setPageTrafficRows(pageMetricsResults);
           setPageMetricsMeta(pageMetricsMeta);
           setPageTrafficError(pageMetricsError);
+
+          if (projectDataResponse && projectDataResponse.ok) {
+            try {
+              const projectJson = await projectDataResponse.json();
+              setProjectRowsFull(
+                Array.isArray(projectJson?.rows)
+                  ? projectJson.rows.filter(
+                      (row) => row && typeof row === "object",
+                    )
+                  : [],
+              );
+            } catch (error) {
+              console.error("Failed to parse project detail response:", error);
+              setProjectRowsFull([]);
+            }
+          } else {
+            setProjectRowsFull([]);
+          }
         }
       } catch (e) {
         if (!aborted) {
@@ -312,6 +339,7 @@ export function RankDataProvider({ children }) {
           setKeywordMetricsReady(false);
           setPageTrafficRows([]);
           setPageMetricsMeta(null);
+          setProjectRowsFull([]);
         }
       } finally {
         if (!aborted) {
@@ -349,6 +377,7 @@ export function RankDataProvider({ children }) {
       setPageTrafficRows([]);
       setPageMetricsMeta(null);
       setPageTrafficError("");
+      setProjectRowsFull([]);
       prevProjectId.current = projectId;
     }
   }, [projectId]);
@@ -997,6 +1026,251 @@ export function RankDataProvider({ children }) {
       .sort((a, b) => b.impressions - a.impressions);
   }, [keywordSearchRows]);
 
+  const authorSummary = useMemo(() => {
+    const projectRows = Array.isArray(projectRowsFull)
+      ? projectRowsFull.filter((row) => row && typeof row === "object")
+      : [];
+
+    const normaliseKey = (name) =>
+      String(name || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "");
+
+    const AUTHOR_KEYS = new Set([
+      "editor",
+      "editors",
+      "author",
+      "authors",
+      "writer",
+      "writers",
+    ]);
+    const URL_KEYS = new Set([
+      "url",
+      "page",
+      "targeturl",
+      "landingpage",
+      "articleurl",
+      "link",
+    ]);
+
+    const findFieldValue = (record, validKeys) => {
+      for (const [key, value] of Object.entries(record)) {
+        if (typeof key !== "string") continue;
+        const normalised = normaliseKey(key);
+        if (!normalised) continue;
+        if (validKeys.has(normalised)) return value;
+        for (const candidate of validKeys) {
+          if (candidate && normalised.startsWith(candidate)) return value;
+        }
+      }
+      return null;
+    };
+
+    const pickPrimaryAuthor = (value) => {
+      if (value == null) return null;
+      const parts = String(value)
+        .split(/[,&\/;；、\n]+/)
+        .map((token) => token.trim())
+        .filter(Boolean);
+      return parts.length ? parts[0] : null;
+    };
+
+    const normaliseAuthorKey = (name) =>
+      String(name || "")
+        .trim()
+        .toLowerCase();
+
+    const normalisePageForLookup = (value) => {
+      if (!value) return null;
+      const decoded = safeDecodeURL(String(value));
+      if (!decoded) return null;
+      const trimmed = decoded.trim();
+      if (!trimmed) return null;
+      let candidate = trimmed;
+      if (/^https?:\/\//i.test(candidate)) {
+        // already absolute
+      } else if (candidate.startsWith("//")) {
+        candidate = `https:${candidate}`;
+      } else if (/^[\w.-]+\.[A-Za-z]{2,}(\/.*)?$/.test(candidate)) {
+        candidate = `https://${candidate.replace(/^\/+/, "")}`;
+      } else if (primaryDomain) {
+        const host = primaryDomain.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+        if (!host) return null;
+        const path = candidate.startsWith("/") ? candidate : `/${candidate}`;
+        candidate = `https://${host}${path}`;
+      } else {
+        return null;
+      }
+      try {
+        const url = new URL(candidate);
+        url.hash = "";
+        const pathname = url.pathname.replace(/\/+$/, "");
+        const formattedPath = pathname || "/";
+        return `${url.origin}${formattedPath}${url.search || ""}`;
+      } catch {
+        return candidate.replace(/#.*$/, "").replace(/\/+$/, "");
+      }
+    };
+
+    const extractArticleId = (url) => {
+      if (typeof url !== "string") return null;
+      const match = url.match(/\/article\/(\d+)/);
+      return match ? match[1] : null;
+    };
+
+    const urlToAuthor = new Map();
+    const urlNoQueryToAuthor = new Map();
+    const articleIdToAuthor = new Map();
+    const authorDisplay = new Map();
+    const authorPages = new Map();
+
+    const registerAuthor = (rawAuthor) => {
+      const primary = pickPrimaryAuthor(rawAuthor);
+      if (!primary) return null;
+      const key = normaliseAuthorKey(primary);
+      if (!key) return null;
+      if (!authorDisplay.has(key)) authorDisplay.set(key, primary.trim());
+      if (!authorPages.has(key)) authorPages.set(key, new Set());
+      return key;
+    };
+
+    const registerPageForAuthor = (authorKey, pageValue) => {
+      if (!authorKey || !pageValue) return;
+      const normalized = normalisePageForLookup(pageValue);
+      if (!normalized) return;
+      const withoutQuery = normalized.split("?")[0];
+      if (!urlToAuthor.has(normalized)) urlToAuthor.set(normalized, authorKey);
+      if (!urlNoQueryToAuthor.has(withoutQuery))
+        urlNoQueryToAuthor.set(withoutQuery, authorKey);
+      const articleId = extractArticleId(normalized);
+      if (articleId && !articleIdToAuthor.has(articleId)) {
+        articleIdToAuthor.set(articleId, authorKey);
+      }
+      authorPages.get(authorKey)?.add(withoutQuery);
+    };
+
+    projectRows.forEach((record) => {
+      const authorKey = registerAuthor(findFieldValue(record, AUTHOR_KEYS));
+      if (!authorKey) return;
+      const pageValue = findFieldValue(record, URL_KEYS);
+      registerPageForAuthor(authorKey, pageValue);
+    });
+
+    if (!urlToAuthor.size && !articleIdToAuthor.size) return [];
+
+    const aggregates = new Map();
+    const getAggregate = (authorKey) => {
+      if (!aggregates.has(authorKey)) {
+        aggregates.set(authorKey, {
+          author: authorDisplay.get(authorKey) || authorKey,
+          impressions: 0,
+          impressionsPrev: 0,
+          clicks: 0,
+          clicksPrev: 0,
+        });
+      }
+      return aggregates.get(authorKey);
+    };
+
+    const sourceRows = pageTrafficRows.length ? pageTrafficRows : rawResults;
+    if (!Array.isArray(sourceRows) || !sourceRows.length) return [];
+
+    sourceRows.forEach((row) => {
+      if (!row) return;
+      const dateVal =
+        row?.["CAST(date AS DATE)"] || row?.date || row?.dt || row?.day;
+      if (!dateVal) return;
+      const d = new Date(dateVal);
+      if (Number.isNaN(d.getTime())) return;
+      const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+      const bucket = currentDateSet.has(label)
+        ? "current"
+        : previousDateSet.has(label)
+          ? "previous"
+          : null;
+      if (!bucket) return;
+
+      const rawPage = row?.page || row?.page_url || row?.displayUrl || row?.url;
+      if (!rawPage) return;
+      const normalized = normalisePageForLookup(rawPage);
+      if (!normalized) return;
+      const articleId = extractArticleId(normalized);
+      let authorKey = null;
+      if (articleId && articleIdToAuthor.has(articleId)) {
+        authorKey = articleIdToAuthor.get(articleId);
+      }
+      if (!authorKey && urlToAuthor.has(normalized)) {
+        authorKey = urlToAuthor.get(normalized);
+      }
+      if (!authorKey) {
+        const withoutQuery = normalized.split("?")[0];
+        authorKey = urlNoQueryToAuthor.get(withoutQuery) || null;
+      }
+      if (!authorKey) {
+        const inlineAuthor = findFieldValue(row, AUTHOR_KEYS);
+        if (inlineAuthor) {
+          authorKey = registerAuthor(inlineAuthor);
+          if (authorKey) {
+            registerPageForAuthor(authorKey, normalized);
+          }
+        }
+      }
+      if (!authorKey) return;
+
+      const impressions = Number(
+        row?.impressions ??
+          row?.total_impressions ??
+          row?.sum_impressions ??
+          row?.impr,
+      );
+      const clicks = Number(
+        row?.clicks ?? row?.total_clicks ?? row?.sum_clicks ?? row?.click,
+      );
+      if (!Number.isFinite(impressions) && !Number.isFinite(clicks)) return;
+
+      const aggregate = getAggregate(authorKey);
+      if (bucket === "current") {
+        if (Number.isFinite(impressions)) aggregate.impressions += impressions;
+        if (Number.isFinite(clicks)) aggregate.clicks += clicks;
+      } else if (bucket === "previous") {
+        if (Number.isFinite(impressions))
+          aggregate.impressionsPrev += impressions;
+        if (Number.isFinite(clicks)) aggregate.clicksPrev += clicks;
+      }
+    });
+
+    const summary = Array.from(aggregates.entries())
+      .map(([authorKey, stats]) => {
+        const pages = authorPages.get(authorKey);
+        const impressions = Math.round(stats.impressions);
+        const impressionsPrev = Math.round(stats.impressionsPrev);
+        const clicks = Math.round(stats.clicks);
+        const clicksPrev = Math.round(stats.clicksPrev);
+        return {
+          author: stats.author,
+          impressions,
+          impressionsPrev,
+          impressionsDelta: impressions - impressionsPrev,
+          clicks,
+          clicksPrev,
+          clicksDelta: clicks - clicksPrev,
+          articleCount: pages ? pages.size : 0,
+        };
+      })
+      .filter((row) => row.impressions || row.impressionsPrev || row.clicks || row.clicksPrev)
+      .sort((a, b) => b.impressions - a.impressions);
+
+    return summary;
+  }, [
+    projectRowsFull,
+    pageTrafficRows,
+    rawResults,
+    currentDateSet,
+    previousDateSet,
+    primaryDomain,
+  ]);
+
   const pageMovers = useMemo(() => {
     const urls = new Set([
       ...pageTrafficAggregates.current.keys(),
@@ -1147,6 +1421,7 @@ export function RankDataProvider({ children }) {
       windowDays,
       keywordSearchRows,
       tagSearchSummary,
+      authorSummary,
       keywordMissingRows,
       keywordsWithRankCurrent,
       keywordsWithRankPrevious,
@@ -1190,6 +1465,7 @@ export function RankDataProvider({ children }) {
       windowDays,
       keywordSearchRows,
       tagSearchSummary,
+      authorSummary,
       keywordMissingRows,
       keywordsWithRankCurrent,
       keywordsWithRankPrevious,
@@ -1233,6 +1509,7 @@ export function RankDataProvider({ children }) {
       pageTrafficLoading,
       pageTrafficError,
       pageMetricsMeta,
+      projectRowsFull,
     }),
     [
       projects,
@@ -1255,6 +1532,7 @@ export function RankDataProvider({ children }) {
       pageTrafficLoading,
       pageTrafficError,
       pageMetricsMeta,
+      projectRowsFull,
     ],
   );
 

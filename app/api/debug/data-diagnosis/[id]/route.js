@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { getProjectById } from "@/app/lib/projects-store";
 import { vercelFetch } from "@/app/lib/vercel-cache";
+import { getGscDbEndpoint } from "@/app/lib/gsc-endpoint";
 
-const UPSTREAM = "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
+const rankQueryOverride = process.env.RANK_QUERY_API;
+const UPSTREAM =
+  typeof rankQueryOverride === "string" && rankQueryOverride.trim()
+    ? rankQueryOverride.trim()
+    : getGscDbEndpoint();
 
 export async function GET(req, { params }) {
   try {

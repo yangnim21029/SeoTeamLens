@@ -79,7 +79,7 @@ async function getProjectsInternal({ force = false } = {}) {
       }
     },
     ['projects'], // cache key
-    { ttl: 14400 } // 4 hours
+    { ttl: 86400 } // 24 hours
   );
   
   return await getCachedProjects();

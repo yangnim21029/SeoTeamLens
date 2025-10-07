@@ -3,7 +3,7 @@ import { unstable_cache } from "next/cache";
 // Vercel 優化的快取包裝器
 export function createVercelCache(fn, keyParts, options = {}) {
   const {
-    revalidate = 14400, // 4 hours
+    revalidate = 86400, // 24 hours
     tags = [],
   } = options;
 

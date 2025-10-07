@@ -1,6 +1,6 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
-import { LayoutDashboard, ListTree, RefreshCcw, Table2 } from "lucide-react";
+import { LayoutDashboard, ListTree, RefreshCcw, Table2, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
@@ -10,7 +10,8 @@ import UserMenu from "./UserMenu";
 import AuthGuard from "./AuthGuard";
 
 const NAV_ITEMS = [
-  { href: "/overview", label: "概覽", icon: LayoutDashboard },
+  { href: "/kw-overview", label: "關鍵字概覽", icon: LayoutDashboard },
+  { href: "/edit-overview", label: "作者成效", icon: UsersRound },
   { href: "/", label: "URL 檢視", icon: Table2 },
 ];
 

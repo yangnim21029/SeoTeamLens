@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import path from "node:path";
 import fs from "node:fs/promises";
 
+import { getGscDbEndpoint } from "@/app/lib/gsc-endpoint";
+
 export const dynamic = "force-dynamic";
 
 const APP_DIR = process.cwd();
@@ -9,9 +11,11 @@ const DATA_DIR = path.join(APP_DIR, "app", "data");
 const DEFAULT_CSV = "SEO Work Allocation - HSHK 總表(更新中）.csv";
 const DEFAULT_SITE = "sc-domain:holidaysmart.io"; // HSHK
 const DEFAULT_DAYS = 21;
+const rankQueryOverride = process.env.RANK_QUERY_API;
 const RANK_QUERY_API =
-  process.env.RANK_QUERY_API ||
-  "https://unbiased-remarkably-arachnid.ngrok-free.app/api/query";
+  typeof rankQueryOverride === "string" && rankQueryOverride.trim()
+    ? rankQueryOverride.trim()
+    : getGscDbEndpoint();
 const MIN_IMPRESSIONS_FOR_TOP = 5;
 
 function parseIntOr(value, fallback) {
