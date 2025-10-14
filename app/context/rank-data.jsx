@@ -1053,6 +1053,24 @@ export function RankDataProvider({ children }) {
       "articleurl",
       "link",
     ]);
+    const keywordRows = Array.isArray(keywordSearchRows)
+      ? keywordSearchRows.filter(
+          (row) =>
+            row &&
+            typeof row === "object" &&
+            typeof row.query === "string" &&
+            row.query.trim(),
+        )
+      : [];
+    const pageKeywordMap = new Map();
+    const TITLE_KEYS = new Set([
+      "title",
+      "pagetitle",
+      "articletitle",
+      "headline",
+      "posttitle",
+      "articlename",
+    ]);
 
     const findFieldValue = (record, validKeys) => {
       for (const [key, value] of Object.entries(record)) {
@@ -1113,6 +1131,70 @@ export function RankDataProvider({ children }) {
       }
     };
 
+    const collectKeywordsForPage = (pageValue, keyword, stats) => {
+      if (!pageValue || !keyword) return;
+      const normalized = normalisePageForLookup(pageValue);
+      if (!normalized) return;
+      const withoutQuery = normalized.split("?")[0];
+      if (!withoutQuery) return;
+      if (!pageKeywordMap.has(withoutQuery)) {
+        pageKeywordMap.set(withoutQuery, []);
+      }
+      pageKeywordMap.get(withoutQuery)?.push({
+        keyword,
+        impressions: Number.isFinite(stats?.impressions)
+          ? Number(stats.impressions)
+          : 0,
+        clicks: Number.isFinite(stats?.clicks) ? Number(stats.clicks) : 0,
+      });
+    };
+
+    keywordRows.forEach((row) => {
+      const keyword = String(row.query || "").trim();
+      if (!keyword) return;
+      collectKeywordsForPage(
+        row.page,
+        keyword,
+        {
+          impressions: row.impressions,
+          clicks: row.clicks,
+        },
+      );
+    });
+
+    pageKeywordMap.forEach((list, key) => {
+      if (!Array.isArray(list) || !list.length) {
+        pageKeywordMap.delete(key);
+        return;
+      }
+      const aggregates = new Map();
+      list.forEach((item) => {
+        if (!item || !item.keyword) return;
+        const normalizedKeyword = item.keyword.toLowerCase();
+        if (!aggregates.has(normalizedKeyword)) {
+          aggregates.set(normalizedKeyword, {
+            keyword: item.keyword,
+            impressions: 0,
+            clicks: 0,
+          });
+        }
+        const entry = aggregates.get(normalizedKeyword);
+        if (Number.isFinite(item.impressions)) {
+          entry.impressions += Math.max(0, item.impressions);
+        }
+        if (Number.isFinite(item.clicks)) {
+          entry.clicks += Math.max(0, item.clicks);
+        }
+      });
+      const sorted = Array.from(aggregates.values()).sort((a, b) => {
+        if (b.impressions !== a.impressions) {
+          return b.impressions - a.impressions;
+        }
+        return b.clicks - a.clicks;
+      });
+      pageKeywordMap.set(key, sorted);
+    });
+
     const extractArticleId = (url) => {
       if (typeof url !== "string") return null;
       const match = url.match(/\/article\/(\d+)/);
@@ -1124,6 +1206,7 @@ export function RankDataProvider({ children }) {
     const articleIdToAuthor = new Map();
     const authorDisplay = new Map();
     const authorPages = new Map();
+    const authorArticles = new Map();
 
     const registerAuthor = (rawAuthor) => {
       const primary = pickPrimaryAuthor(rawAuthor);
@@ -1132,10 +1215,43 @@ export function RankDataProvider({ children }) {
       if (!key) return null;
       if (!authorDisplay.has(key)) authorDisplay.set(key, primary.trim());
       if (!authorPages.has(key)) authorPages.set(key, new Set());
+      if (!authorArticles.has(key)) authorArticles.set(key, new Map());
       return key;
     };
 
-    const registerPageForAuthor = (authorKey, pageValue) => {
+    const ensureAuthorArticles = (authorKey) => {
+      if (!authorArticles.has(authorKey)) {
+        authorArticles.set(authorKey, new Map());
+      }
+      return authorArticles.get(authorKey);
+    };
+
+    const ensureArticleEntry = (authorKey, normalized, withoutQuery, meta = {}) => {
+      if (!authorKey || !normalized) return null;
+      const key = withoutQuery || normalized;
+      if (!key) return null;
+      const collection = ensureAuthorArticles(authorKey);
+      if (!collection.has(key)) {
+        collection.set(key, {
+          url: normalized,
+          canonicalUrl: withoutQuery || normalized,
+          title: meta.title ? String(meta.title).trim() : "",
+          impressions: 0,
+          impressionsPrev: 0,
+          clicks: 0,
+          clicksPrev: 0,
+        });
+      } else {
+        const entry = collection.get(key);
+        entry.url = normalized;
+        if (meta.title && !entry.title) {
+          entry.title = String(meta.title).trim();
+        }
+      }
+      return collection.get(key);
+    };
+
+    const registerPageForAuthor = (authorKey, pageValue, meta = {}) => {
       if (!authorKey || !pageValue) return;
       const normalized = normalisePageForLookup(pageValue);
       if (!normalized) return;
@@ -1148,13 +1264,15 @@ export function RankDataProvider({ children }) {
         articleIdToAuthor.set(articleId, authorKey);
       }
       authorPages.get(authorKey)?.add(withoutQuery);
+      ensureArticleEntry(authorKey, normalized, withoutQuery, meta);
     };
 
     projectRows.forEach((record) => {
       const authorKey = registerAuthor(findFieldValue(record, AUTHOR_KEYS));
       if (!authorKey) return;
       const pageValue = findFieldValue(record, URL_KEYS);
-      registerPageForAuthor(authorKey, pageValue);
+      const titleValue = findFieldValue(record, TITLE_KEYS);
+      registerPageForAuthor(authorKey, pageValue, { title: titleValue });
     });
 
     if (!urlToAuthor.size && !articleIdToAuthor.size) return [];
@@ -1195,6 +1313,7 @@ export function RankDataProvider({ children }) {
       if (!rawPage) return;
       const normalized = normalisePageForLookup(rawPage);
       if (!normalized) return;
+      const withoutQuery = normalized.split("?")[0];
       const articleId = extractArticleId(normalized);
       let authorKey = null;
       if (articleId && articleIdToAuthor.has(articleId)) {
@@ -1204,7 +1323,6 @@ export function RankDataProvider({ children }) {
         authorKey = urlToAuthor.get(normalized);
       }
       if (!authorKey) {
-        const withoutQuery = normalized.split("?")[0];
         authorKey = urlNoQueryToAuthor.get(withoutQuery) || null;
       }
       if (!authorKey) {
@@ -1229,14 +1347,26 @@ export function RankDataProvider({ children }) {
       );
       if (!Number.isFinite(impressions) && !Number.isFinite(clicks)) return;
 
+      const articleEntry = ensureArticleEntry(authorKey, normalized, withoutQuery);
+
       const aggregate = getAggregate(authorKey);
       if (bucket === "current") {
         if (Number.isFinite(impressions)) aggregate.impressions += impressions;
         if (Number.isFinite(clicks)) aggregate.clicks += clicks;
+        if (articleEntry) {
+          if (Number.isFinite(impressions))
+            articleEntry.impressions += impressions;
+          if (Number.isFinite(clicks)) articleEntry.clicks += clicks;
+        }
       } else if (bucket === "previous") {
         if (Number.isFinite(impressions))
           aggregate.impressionsPrev += impressions;
         if (Number.isFinite(clicks)) aggregate.clicksPrev += clicks;
+        if (articleEntry) {
+          if (Number.isFinite(impressions))
+            articleEntry.impressionsPrev += impressions;
+          if (Number.isFinite(clicks)) articleEntry.clicksPrev += clicks;
+        }
       }
     });
 
@@ -1247,7 +1377,62 @@ export function RankDataProvider({ children }) {
         const impressionsPrev = Math.round(stats.impressionsPrev);
         const clicks = Math.round(stats.clicks);
         const clicksPrev = Math.round(stats.clicksPrev);
+        const ctr =
+          impressions > 0 && Number.isFinite(clicks) ? clicks / impressions : null;
+        const ctrPrev =
+          impressionsPrev > 0 && Number.isFinite(clicksPrev)
+            ? clicksPrev / impressionsPrev
+            : null;
+        const articlesMap = authorArticles.get(authorKey);
+        const articles = articlesMap
+          ? Array.from(articlesMap.values())
+              .map((article) => {
+                const currentImpressions = Math.round(article.impressions);
+                const currentClicks = Math.round(article.clicks);
+                const previousImpressions = Math.round(article.impressionsPrev);
+                const previousClicks = Math.round(article.clicksPrev);
+                const canonicalKey =
+                  article.canonicalUrl ||
+                  (article.url ? article.url.split("?")[0] : null);
+                const keywordStats =
+                  (canonicalKey && pageKeywordMap.get(canonicalKey)) || [];
+                const keywordLabels = keywordStats
+                  .map((item) =>
+                    item && typeof item.keyword === "string"
+                      ? item.keyword.trim()
+                      : "",
+                  )
+                  .filter(Boolean);
+                const keywordsFull = keywordLabels;
+                const keywordsLimited = keywordLabels.slice(0, 10);
+                const ctrValue =
+                  currentImpressions > 0 && Number.isFinite(currentClicks)
+                    ? currentClicks / currentImpressions
+                    : null;
+                const ctrPrevValue =
+                  previousImpressions > 0 && Number.isFinite(previousClicks)
+                    ? previousClicks / previousImpressions
+                    : null;
+                return {
+                  url: article.url,
+                  canonicalUrl: article.canonicalUrl,
+                  title: article.title,
+                  impressions: currentImpressions,
+                  impressionsPrev: previousImpressions,
+                  clicks: currentClicks,
+                  clicksPrev: previousClicks,
+                  ctr: ctrValue,
+                  ctrPrev: ctrPrevValue,
+                  keywords: keywordsLimited,
+                  keywordsFull,
+                };
+              })
+              .sort((a, b) => b.impressions - a.impressions)
+          : [];
+        const articleCount =
+          pages && pages.size ? pages.size : articles.length;
         return {
+          authorKey,
           author: stats.author,
           impressions,
           impressionsPrev,
@@ -1255,7 +1440,16 @@ export function RankDataProvider({ children }) {
           clicks,
           clicksPrev,
           clicksDelta: clicks - clicksPrev,
-          articleCount: pages ? pages.size : 0,
+          articleCount,
+          ctr,
+          ctrPrev,
+          ctrDelta:
+            ctr != null && ctrPrev != null
+              ? ctr - ctrPrev
+              : ctr != null && impressionsPrev === 0
+                ? ctr
+                : null,
+          articles,
         };
       })
       .filter((row) => row.impressions || row.impressionsPrev || row.clicks || row.clicksPrev)
@@ -1269,6 +1463,7 @@ export function RankDataProvider({ children }) {
     currentDateSet,
     previousDateSet,
     primaryDomain,
+    keywordSearchRows,
   ]);
 
   const pageMovers = useMemo(() => {

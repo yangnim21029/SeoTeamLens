@@ -28,29 +28,43 @@ export default function KeywordOverviewPage() {
     });
   }, [ensureOverviewMetrics]);
 
-  if (!activeProject) {
-    return (
-      <div className="text-sm text-slate-500">
-        請先選擇專案以載入統計資料。
+  const cardMessage = (content, tone = "default") => (
+    <div className="overflow-hidden rounded-2xl bg-slate-100 px-6 py-6 text-sm sm:px-8 sm:py-8">
+      <div
+        className={
+          tone === "error" ? "text-rose-500" : "text-slate-600"
+        }
+      >
+        {content}
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (pageTrafficError) {
-    return (
-      <div className="text-sm text-rose-500">載入失敗：{pageTrafficError}</div>
-    );
-  }
-
-  if (!pageMetricsReady || isPending) {
-    if (pageTrafficLoading || !pageMetricsRequested || isPending) {
-      return <div className="text-sm text-slate-500">載入中…</div>;
+  const statusContent = (() => {
+    if (!activeProject) {
+      return cardMessage("請先選擇專案以載入統計資料。");
     }
-    return <div className="text-sm text-slate-500">尚無可用的統計資料。</div>;
-  }
 
-  if (!overviewData) {
-    return <div className="text-sm text-slate-500">尚無可用的統計資料。</div>;
+    if (pageTrafficError) {
+      return cardMessage(`載入失敗：${pageTrafficError}`, "error");
+    }
+
+    if (!pageMetricsReady || isPending) {
+      if (pageTrafficLoading || !pageMetricsRequested || isPending) {
+        return cardMessage("載入中…");
+      }
+      return cardMessage("尚無可用的統計資料。");
+    }
+
+    if (!overviewData) {
+      return cardMessage("尚無可用的統計資料。");
+    }
+
+    return null;
+  })();
+
+  if (statusContent) {
+    return statusContent;
   }
 
   return (
@@ -290,14 +304,14 @@ const DashboardOverview = React.memo(function DashboardOverview({ data, windowDa
             }`}
         >
           <div
-            className={`flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${showComparison
+            className={`flex-1 overflow-hidden rounded-2xl bg-slate-100 ${showComparison
               ? "min-w-[320px]"
               : "min-w-[200px] xl:max-w-[540px]"
               }`}
           >
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+            <div className="flex items-center justify-between border-b border-slate-200/60 px-6 py-4 sm:px-8 sm:py-5">
               <div>
-                <span className="text-sm font-semibold text-slate-800">
+                <span className="text-base font-semibold text-slate-800 sm:text-lg">
                   關鍵字搜尋量
                 </span>
                 <span className="ml-2 text-xs text-slate-400">
@@ -305,8 +319,9 @@ const DashboardOverview = React.memo(function DashboardOverview({ data, windowDa
                 </span>
               </div>
             </div>
-            <div>
-              <table className="min-w-full table-auto border-separate border-spacing-0 text-left text-sm">
+            <div className="px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-6">
+              <div className="overflow-hidden rounded-xl border border-slate-200/60 bg-white">
+                <table className="min-w-full table-auto border-separate border-spacing-0 text-left text-sm">
                 <thead className="bg-slate-50 text-slate-500">
                   <tr>
                     <th
@@ -333,14 +348,14 @@ const DashboardOverview = React.memo(function DashboardOverview({ data, windowDa
                 </thead>
                 <tbody>
                   {!keywordMetricsLoaded && (
-                    <tr>
-                      <td
-                        className="px-4 py-3 text-slate-400"
-                        colSpan={keywordTableColumnCount}
-                      >
-                        指標載入中…
-                      </td>
-                    </tr>
+                      <tr>
+                        <td
+                          className="px-4 py-3 text-slate-400"
+                          colSpan={keywordTableColumnCount}
+                        >
+                          指標載入中…
+                        </td>
+                      </tr>
                   )}
                   {keywordMetricsLoaded && keywordSearchRows.length === 0 && (
                     <tr>
@@ -356,7 +371,7 @@ const DashboardOverview = React.memo(function DashboardOverview({ data, windowDa
                     keywordSearchRows.map((row, idx) => (
                       <tr
                         key={`${row.query}-${idx}`}
-                        className="border-t border-slate-100 text-slate-700"
+                        className="border-t border-slate-200/60 text-slate-700 transition-colors hover:bg-slate-100/70"
                       >
                         <td className="px-4 py-2 align-top">
                           <div className="min-w-0 whitespace-normal break-words">
@@ -393,24 +408,26 @@ const DashboardOverview = React.memo(function DashboardOverview({ data, windowDa
                     ))}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
 
           <div className="flex flex-1 min-w-[260px] flex-col gap-4 lg:flex-row lg:flex-none lg:basis-[640px]">
-            <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:min-w-[360px]">
-              <div className="border-b border-slate-200 px-5 py-3">
-                <span className="text-sm font-semibold text-slate-800">
+            <div className="flex-1 overflow-hidden rounded-2xl bg-slate-100 lg:min-w-[360px]">
+              <div className="border-b border-slate-200/60 px-6 py-4 sm:px-8 sm:py-5">
+                <span className="text-base font-semibold text-slate-800 sm:text-lg">
                   Tag 搜尋量排名
                 </span>
               </div>
-              <div className="px-4 py-3">
+              <div className="px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-6">
                 {!keywordMetricsLoaded ? (
                   <div className="text-sm text-slate-400">指標載入中…</div>
                 ) : tagSearchSummary.length === 0 ? (
                   <div className="text-sm text-slate-400">尚無資料</div>
                 ) : (
-                  <ol className="space-y-2 text-sm text-slate-700">
-                    {tagSearchSummary.map((row, idx) => {
+                  <div className="overflow-hidden rounded-xl border border-slate-200/60 bg-white p-3">
+                    <ol className="space-y-2 text-sm text-slate-700">
+                      {tagSearchSummary.map((row, idx) => {
                       const impressions = Number(row.impressions) || 0;
                       const share = totalTagImpressions
                         ? impressions / totalTagImpressions
@@ -421,7 +438,7 @@ const DashboardOverview = React.memo(function DashboardOverview({ data, windowDa
                       return (
                         <li
                           key={row.tag}
-                          className="relative overflow-hidden rounded-lg border border-slate-100 bg-slate-50/40 p-3 last:mb-0"
+                          className="relative overflow-hidden rounded-lg border border-slate-200/60 bg-slate-50/40 p-3 last:mb-0"
                         >
                           {totalTagImpressions && (
                             <div
@@ -474,29 +491,31 @@ const DashboardOverview = React.memo(function DashboardOverview({ data, windowDa
                         </li>
                       );
                     })}
-                  </ol>
+                    </ol>
+                  </div>
                 )}
               </div>
             </div>
 
-            <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:w-72">
-              <div className="border-b border-slate-200 px-5 py-3">
-                <span className="text-sm font-semibold text-slate-800">
+            <div className="flex-1 overflow-hidden rounded-2xl bg-slate-100 lg:w-72">
+              <div className="border-b border-slate-200/60 px-6 py-4 sm:px-8 sm:py-5">
+                <span className="text-base font-semibold text-slate-800 sm:text-lg">
                   區間無數據字詞
                 </span>
               </div>
-              <div className="px-4 py-3">
+              <div className="px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-6">
                 {!keywordMetricsLoaded ? (
                   <div className="text-sm text-slate-400">指標載入中…</div>
                 ) : keywordMissingRows.length === 0 ? (
                   <div className="text-sm text-slate-400">尚無資料</div>
                 ) : (
-                  <ol className="space-y-2 text-sm text-slate-700">
-                    {keywordMissingRows.map((row, idx) => (
-                      <li
-                        key={`${row.query}-${idx}`}
-                        className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2 last:border-0 last:pb-0"
-                      >
+                  <div className="overflow-hidden rounded-xl border border-slate-200/60 bg-white p-3">
+                    <ol className="space-y-2 text-sm text-slate-700">
+                      {keywordMissingRows.map((row, idx) => (
+                        <li
+                          key={`${row.query}-${idx}`}
+                          className="flex items-baseline justify-between gap-3 border-b border-slate-200/60 pb-2 last:border-0 last:pb-0"
+                        >
                         <span className="flex flex-col">
                           <span className="font-medium text-slate-800">
                             {row.query}
@@ -508,9 +527,10 @@ const DashboardOverview = React.memo(function DashboardOverview({ data, windowDa
                         <span className="font-mono text-[12px] text-slate-600">
                           {row.volume ? row.volume.toLocaleString() : "—"}
                         </span>
-                      </li>
-                    ))}
-                  </ol>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
                 )}
               </div>
             </div>
@@ -547,28 +567,26 @@ function SummaryCard({
         : "text-slate-400";
 
   return (
-    <div className="flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      {icon && (
-        <div className="flex h-24 items-center justify-center bg-white px-4 py-4 rounded-t-2xl mb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm overflow-hidden">
-              {typeof icon === "object" && icon?.type === "img" ? (
-                icon
-              ) : (
-                <span className="text-xl font-semibold text-slate-600">
-                  {icon}
-                </span>
-              )}
-            </div>
-            {typeof icon === "object" && icon?.props?.["data-domain"] && (
-              <div className="text-2xl font-bold text-slate-700">
-                {icon.props["data-domain"]}
-              </div>
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl bg-slate-100">
+      {icon ? (
+        <div className="flex items-center gap-4 px-6 pt-6 sm:px-8 sm:pt-8">
+          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm ring-1 ring-slate-200/60">
+            {typeof icon === "object" && icon?.type === "img" ? (
+              icon
+            ) : (
+              <span className="text-xl font-semibold text-slate-600">
+                {icon}
+              </span>
             )}
           </div>
+          {typeof icon === "object" && icon?.props?.["data-domain"] && (
+            <div className="text-2xl font-bold text-slate-700">
+              {icon.props["data-domain"]}
+            </div>
+          )}
         </div>
-      )}
-      <div className="flex flex-1 flex-col px-4 py-4 rounded-b-2xl border-t border-slate-200">
+      ) : null}
+      <div className="flex flex-1 flex-col px-6 py-6 sm:px-8 sm:py-8">
         <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           {title}
         </div>
@@ -578,6 +596,11 @@ function SummaryCard({
           >
             {value}
           </span>
+          {unit && (
+            <span className="ml-1 text-sm font-medium text-slate-500">
+              {unit}
+            </span>
+          )}
         </div>
         {(delta?.label || delta?.helper) && (
           <div className="mt-4 text-xs font-semibold text-slate-500">

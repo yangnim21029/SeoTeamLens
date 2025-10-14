@@ -128,15 +128,15 @@ export default function UrlRankingPage() {
   return (
     <div className="space-y-4">
       {(loading || error) && (
-        <div className="text-sm">
-          {loading && <span className="text-slate-600">載入中…</span>}
-          {error && (
-            <span className="ml-2 text-rose-600">載入失敗：{error}</span>
-          )}
+        <div className="overflow-hidden rounded-2xl bg-slate-100 px-6 py-4 text-sm text-slate-600 sm:px-8 sm:py-5">
+          <div className="flex flex-wrap items-center gap-3">
+            {loading && <span>載入中…</span>}
+            {error && <span className="text-rose-600">載入失敗：{error}</span>}
+          </div>
         </div>
       )}
 
-      <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700">
+      <div className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-700">
         URL 檢視（多關鍵字聚合）
       </div>
 
@@ -151,7 +151,7 @@ export default function UrlRankingPage() {
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700">
+          <span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-1.5 text-sm text-slate-700">
             <span className="text-slate-500">篩選</span>
           </span>
           <ToggleButton
@@ -316,7 +316,7 @@ function UrlTable({ view, expanded, toggleExpand, copy, windowDays }) {
       const visibleKeywords = isOpen ? group.items : group.items.slice(0, 3);
       return (
         <React.Fragment key={group.displayUrl}>
-          <tr className="border-t border-slate-100 hover:bg-slate-50/60">
+          <tr className="border-t border-slate-200/60 transition-colors hover:bg-slate-100/70">
             <td className="px-4 py-3">
               <div className="min-w-0 flex items-center gap-2">
                 <button
@@ -387,7 +387,7 @@ function UrlTable({ view, expanded, toggleExpand, copy, windowDays }) {
             </td>
           </tr>
           {isOpen && (
-            <tr className="border-t border-slate-100 bg-slate-50/70">
+            <tr className="border-t border-slate-200/60 bg-slate-100/60">
               <td colSpan={6} className="px-4 py-4">
                 <KeywordDetailPanel
                   url={group.displayUrl}
@@ -446,31 +446,36 @@ function UrlTable({ view, expanded, toggleExpand, copy, windowDays }) {
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      <div ref={containerRef} className="max-h-[70vh] overflow-y-auto">
-        <table className="min-w-full table-fixed text-left text-sm">
-          <thead>
-            <tr className="bg-slate-50 text-slate-600">
-              <th className="px-4 py-3">Display URL</th>
-              <th className="px-4 py-3">Keywords</th>
-              <th className="px-4 py-3">Avg Current</th>
-              <th className="px-4 py-3">Top10</th>
-              <th className="px-4 py-3">Agg Trend</th>
-              <th className="px-4 py-3">Win / Lose</th>
-            </tr>
-          </thead>
-          {useVirtual ? (
-            <VirtualBody items={view} />
-          ) : (
-            <tbody>{view.map((group) => Row(group))}</tbody>
-          )}
-        </table>
+    <div className="overflow-hidden rounded-2xl bg-slate-100">
+      <div className="px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-6">
+        {view.length > 0 ? (
+          <div className="overflow-hidden rounded-xl border border-slate-200/60 bg-white">
+            <div ref={containerRef} className="max-h-[70vh] overflow-y-auto">
+              <table className="min-w-full table-fixed text-left text-sm">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-600">
+                    <th className="px-4 py-3">Display URL</th>
+                    <th className="px-4 py-3">Keywords</th>
+                    <th className="px-4 py-3">Avg Current</th>
+                    <th className="px-4 py-3">Top10</th>
+                    <th className="px-4 py-3">Agg Trend</th>
+                    <th className="px-4 py-3">Win / Lose</th>
+                  </tr>
+                </thead>
+                {useVirtual ? (
+                  <VirtualBody items={view} />
+                ) : (
+                  <tbody>{view.map((group) => Row(group))}</tbody>
+                )}
+              </table>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl bg-white px-6 py-12 text-center text-slate-500">
+            沒有符合條件的結果。
+          </div>
+        )}
       </div>
-      {view.length === 0 && (
-        <div className="p-8 text-center text-slate-500">
-          沒有符合條件的結果。
-        </div>
-      )}
     </div>
   );
 }
@@ -553,11 +558,11 @@ const KeywordDetailPanel = memo(function KeywordDetailPanel({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-        <div className="flex flex-col lg:flex-row">
+      <div className="overflow-hidden rounded-2xl bg-slate-100">
+        <div className="flex flex-col gap-4 px-4 py-4 sm:px-6 sm:py-6 lg:flex-row lg:gap-6">
           {/* 左側圖表區域 */}
-          <div className="flex-1 min-w-0 p-4">
-            <div className="h-80 w-full">
+          <div className="flex-1 min-w-0">
+            <div className="h-80 w-full rounded-xl border border-slate-200/60 bg-white p-4">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={chartData}
@@ -658,51 +663,53 @@ const KeywordDetailPanel = memo(function KeywordDetailPanel({
           </div>
 
           {/* 右側關鍵字清單 - 緊密設計，無間距 */}
-          <div className="lg:w-80 border-l border-slate-200">
-            <div className="divide-y divide-slate-200">
-              {seriesMeta.map((meta, index) => (
-                <div
-                  key={meta.dataKey}
-                  className="flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    {/* 圓形圖例 */}
-                    <span
-                      className="inline-block h-3 w-3 shrink-0 rounded-full"
-                      style={{ backgroundColor: meta.color }}
-                    />
+          <div className="lg:w-80">
+            <div className="overflow-hidden rounded-xl border border-slate-200/60 bg-white">
+              <div className="divide-y divide-slate-200/60">
+                {seriesMeta.map((meta, index) => (
+                  <div
+                    key={meta.dataKey}
+                    className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-slate-100/70"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {/* 圓形圖例 */}
+                      <span
+                        className="inline-block h-3 w-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: meta.color }}
+                      />
 
-                    {/* 關鍵字名稱 */}
-                    <div className="flex-1 min-w-0">
-                      <div
-                        className="font-medium text-sm text-slate-800 truncate"
-                        title={meta.keyword}
-                      >
-                        {meta.keyword}
+                      {/* 關鍵字名稱 */}
+                      <div className="flex-1 min-w-0">
+                        <div
+                          className="font-medium text-sm text-slate-800 truncate"
+                          title={meta.keyword}
+                        >
+                          {meta.keyword}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* 右側數值顯示 */}
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-slate-800">
-                      {meta.current}
-                    </div>
-                    {meta.delta !== 0 && (
-                      <div className={`text-xs ${meta.delta > 0 ? "text-emerald-600" : "text-rose-600"
-                        }`}>
-                        {meta.delta > 0 ? `+${meta.delta}` : meta.delta}
+                    {/* 右側數值顯示 */}
+                    <div className="text-right">
+                      <div className="text-sm font-semibold text-slate-800">
+                        {meta.current}
                       </div>
-                    )}
+                      {meta.delta !== 0 && (
+                        <div className={`text-xs ${meta.delta > 0 ? "text-emerald-600" : "text-rose-600"
+                          }`}>
+                          {meta.delta > 0 ? `+${meta.delta}` : meta.delta}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div>
+      <div className="overflow-hidden rounded-2xl bg-slate-100 px-4 py-4 sm:px-6 sm:py-6">
         <div className="mb-2 text-xs font-medium text-slate-500">調整紀錄</div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
@@ -739,8 +746,9 @@ const KeywordDetailPanel = memo(function KeywordDetailPanel({
 
 // --- Logging helpers -----------------------------------------------------------
 const LOG_PREFIX = "krd:log:";
-const normalizeLogKeyword = (keyword) =>
-  keyword ? keyword.toLowerCase() : "__all__";
+function normalizeLogKeyword(keyword) {
+  return keyword ? keyword.toLowerCase() : "__all__";
+}
 
 function logKey(url, keyword) {
   return `${LOG_PREFIX}${(url || "").toLowerCase()}::${normalizeLogKeyword(keyword)}`;
