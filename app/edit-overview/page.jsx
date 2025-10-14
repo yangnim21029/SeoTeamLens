@@ -17,6 +17,12 @@ function formatPercent(value) {
   return `${percent.toFixed(decimals)}%`;
 }
 
+function formatRank(value) {
+  if (!Number.isFinite(value)) return "—";
+  if (value >= 10) return value.toFixed(1);
+  return value.toFixed(2);
+}
+
 function buildDelta(value, suffix = "") {
   if (value == null || Number.isNaN(value) || value === 0) {
     return { label: `±0${suffix}`, tone: "neutral" };
@@ -138,6 +144,8 @@ export default function EditOverviewPage() {
       clicks: (row) => Number(row.clicks) || 0,
       clicksPrev: (row) => Number(row.clicksPrev) || 0,
       clicksDelta: (row) => Number(row.clicksDelta) || 0,
+      avgRank: (row) =>
+        Number.isFinite(row.avgRank) ? Number(row.avgRank) : Number.POSITIVE_INFINITY,
       ctr: (row) =>
         Number.isFinite(row.ctr) ? Number(row.ctr) : Number.NEGATIVE_INFINITY,
       articleCount: (row) => Number(row.articleCount) || 0,
@@ -198,7 +206,8 @@ export default function EditOverviewPage() {
           direction: prev.direction === "desc" ? "asc" : "desc",
         };
       }
-      const defaultDirection = column === "author" ? "asc" : "desc";
+      const defaultDirection =
+        column === "author" || column === "avgRank" ? "asc" : "desc";
       return {
         column,
         direction: defaultDirection,
@@ -272,7 +281,7 @@ export default function EditOverviewPage() {
           value={topAuthor ? topAuthor.author : "—"}
           description={
             topAuthor
-              ? `曝光 ${formatNumber(topAuthor.impressions)} 次，點擊 ${topAuthorClicksLabel} 次，點擊率 ${topAuthorCtrLabel}，文章 ${formatNumber(topAuthor.articleCount)} 篇`
+              ? `曝光 ${formatNumber(topAuthor.impressions)} 次，點擊 ${topAuthorClicksLabel} 次，點擊率 ${topAuthorCtrLabel}，平均排名 ${formatRank(topAuthor.avgRank)}，文章 ${formatNumber(topAuthor.articleCount)} 篇`
               : "尚無資料"
           }
           delta={topAuthorDelta}
@@ -341,7 +350,7 @@ function AuthorTable({
         ? "text-rose-500"
         : "text-slate-400";
 
-  const columnCount = showComparison ? 9 : 6;
+  const columnCount = showComparison ? 10 : 7;
   const getSortIndicator = (column) => {
     if (!sortState || sortState.column !== column) return "↕";
     return sortState.direction === "asc" ? "▲" : "▼";
@@ -459,6 +468,20 @@ function AuthorTable({
                   </button>
                 </th>
               )}
+              <th className="w-24 px-4 py-2 font-medium text-right">
+                <button
+                  type="button"
+                  onClick={() => handleSort("avgRank")}
+                  className="flex w-full items-center justify-end gap-1 text-xs font-semibold text-slate-500 whitespace-nowrap"
+                >
+                  <span>平均排名</span>
+                  <span
+                    className={`text-[10px] ${getSortIndicatorClass("avgRank")}`}
+                  >
+                    {getSortIndicator("avgRank")}
+                  </span>
+                </button>
+              </th>
               <th className="w-20 px-4 py-2 font-medium text-right">
                 <button
                   type="button"
@@ -553,6 +576,9 @@ function AuthorTable({
                       </span>
                     </td>
                   )}
+                  <td className="px-4 py-2 text-right align-top font-mono text-[13px] text-slate-600">
+                    {formatRank(row.avgRank)}
+                  </td>
                   <td className="px-4 py-2 text-right align-top text-[13px] font-mono text-slate-600">
                     {formatPercent(row.ctr)}
                   </td>
@@ -594,6 +620,8 @@ function AuthorArticlesPanel({ author, windowLabel }) {
             : "",
       impressions: (row) => Number(row.impressions) || 0,
       clicks: (row) => Number(row.clicks) || 0,
+      avgRank: (row) =>
+        Number.isFinite(row.avgRank) ? Number(row.avgRank) : Number.POSITIVE_INFINITY,
       ctr: (row) =>
         Number.isFinite(row.ctr) ? Number(row.ctr) : Number.NEGATIVE_INFINITY,
     };
@@ -671,7 +699,8 @@ function AuthorArticlesPanel({ author, windowLabel }) {
           direction: prev.direction === "desc" ? "asc" : "desc",
         };
       }
-      const defaultDirection = column === "keywords" ? "asc" : "desc";
+      const defaultDirection =
+        column === "keywords" || column === "avgRank" ? "asc" : "desc";
       return {
         column,
         direction: defaultDirection,
@@ -682,6 +711,7 @@ function AuthorArticlesPanel({ author, windowLabel }) {
     `總曝光 ${formatNumber(author.impressions)}`,
     `總點擊 ${formatNumber(author.clicks)}`,
     `點擊率 ${formatPercent(author.ctr)}`,
+    `平均排名 ${formatRank(author.avgRank)}`,
   ].join(" · ");
 
   return (
@@ -745,6 +775,20 @@ function AuthorArticlesPanel({ author, windowLabel }) {
                       className={`text-[10px] ${getArticleSortIndicatorClass("clicks")}`}
                     >
                       {getArticleSortIndicator("clicks")}
+                    </span>
+                  </button>
+                </th>
+                <th className="w-24 px-4 py-2 font-medium text-right">
+                  <button
+                    type="button"
+                    onClick={() => handleArticleSort("avgRank")}
+                    className="flex w-full items-center justify-end gap-1 text-xs font-semibold text-slate-500 whitespace-nowrap"
+                  >
+                    <span>平均排名</span>
+                    <span
+                      className={`text-[10px] ${getArticleSortIndicatorClass("avgRank")}`}
+                    >
+                      {getArticleSortIndicator("avgRank")}
                     </span>
                   </button>
                 </th>
@@ -837,6 +881,9 @@ function AuthorArticlesPanel({ author, windowLabel }) {
                     </td>
                     <td className="px-4 py-3 text-right align-top font-mono text-[13px] text-slate-800">
                       {formatNumber(article.clicks)}
+                    </td>
+                    <td className="px-4 py-3 text-right align-top font-mono text-[13px] text-slate-600">
+                      {formatRank(article.avgRank)}
                     </td>
                     <td className="px-4 py-3 text-right align-top text-[13px] font-mono text-slate-600">
                       {formatPercent(article.ctr)}

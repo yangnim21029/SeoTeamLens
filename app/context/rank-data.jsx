@@ -1207,6 +1207,23 @@ export function RankDataProvider({ children }) {
     const authorDisplay = new Map();
     const authorPages = new Map();
     const authorArticles = new Map();
+    const pageRankLookup = new Map();
+
+    groupedBase.forEach((group) => {
+      if (!group || typeof group !== "object") return;
+      const normalized = normalisePageForLookup(group.displayUrl);
+      if (!normalized) return;
+      const rankValue =
+        Number.isFinite(group.avgCurrent) && group.avgCurrent > 0
+          ? Number(group.avgCurrent)
+          : null;
+      if (rankValue == null) return;
+      if (!pageRankLookup.has(normalized)) pageRankLookup.set(normalized, rankValue);
+      const withoutQuery = normalized.split("?")[0];
+      if (withoutQuery && !pageRankLookup.has(withoutQuery)) {
+        pageRankLookup.set(withoutQuery, rankValue);
+      }
+    });
 
     const registerAuthor = (rawAuthor) => {
       const primary = pickPrimaryAuthor(rawAuthor);
@@ -1235,6 +1252,7 @@ export function RankDataProvider({ children }) {
         collection.set(key, {
           url: normalized,
           canonicalUrl: withoutQuery || normalized,
+          normalized,
           title: meta.title ? String(meta.title).trim() : "",
           impressions: 0,
           impressionsPrev: 0,
@@ -1244,6 +1262,7 @@ export function RankDataProvider({ children }) {
       } else {
         const entry = collection.get(key);
         entry.url = normalized;
+        entry.normalized = normalized;
         if (meta.title && !entry.title) {
           entry.title = String(meta.title).trim();
         }
@@ -1413,9 +1432,25 @@ export function RankDataProvider({ children }) {
                   previousImpressions > 0 && Number.isFinite(previousClicks)
                     ? previousClicks / previousImpressions
                     : null;
+                const normalizedForLookup = article.normalized
+                  ? article.normalized
+                  : normalisePageForLookup(article.url || article.canonicalUrl);
+                const normalizedWithoutQuery = normalizedForLookup
+                  ? normalizedForLookup.split("?")[0]
+                  : null;
+                const avgRankCurrentValueRaw =
+                  (normalizedForLookup && pageRankLookup.get(normalizedForLookup)) ??
+                  (normalizedWithoutQuery && pageRankLookup.get(normalizedWithoutQuery)) ??
+                  null;
+                const avgRankCurrentValue =
+                  avgRankCurrentValueRaw != null
+                    ? Number(avgRankCurrentValueRaw)
+                    : null;
+
                 return {
                   url: article.url,
                   canonicalUrl: article.canonicalUrl,
+                  normalized: normalizedForLookup || article.canonicalUrl,
                   title: article.title,
                   impressions: currentImpressions,
                   impressionsPrev: previousImpressions,
@@ -1425,12 +1460,25 @@ export function RankDataProvider({ children }) {
                   ctrPrev: ctrPrevValue,
                   keywords: keywordsLimited,
                   keywordsFull,
+                  avgRank: avgRankCurrentValue,
                 };
               })
               .sort((a, b) => b.impressions - a.impressions)
           : [];
         const articleCount =
           pages && pages.size ? pages.size : articles.length;
+        const rankValues = articles
+          .map((article) =>
+            Number.isFinite(article.avgRank) ? Number(article.avgRank) : null,
+          )
+          .filter((value) => value != null);
+        const avgRank =
+          rankValues.length
+            ? rankValues.reduce((acc, value) => acc + value, 0) /
+              rankValues.length
+            : null;
+        const avgRankRounded =
+          avgRank != null ? Number(avgRank.toFixed(2)) : null;
         return {
           authorKey,
           author: stats.author,
@@ -1449,6 +1497,7 @@ export function RankDataProvider({ children }) {
               : ctr != null && impressionsPrev === 0
                 ? ctr
                 : null,
+          avgRank: avgRankRounded,
           articles,
         };
       })
@@ -1464,6 +1513,7 @@ export function RankDataProvider({ children }) {
     previousDateSet,
     primaryDomain,
     keywordSearchRows,
+    groupedBase,
   ]);
 
   const pageMovers = useMemo(() => {
