@@ -341,7 +341,7 @@ function AuthorTable({
         ? "text-rose-500"
         : "text-slate-400";
 
-  const columnCount = showComparison ? 8 : 6;
+  const columnCount = showComparison ? 9 : 6;
   const getSortIndicator = (column) => {
     if (!sortState || sortState.column !== column) return "↕";
     return sortState.direction === "asc" ? "▲" : "▼";
@@ -443,6 +443,22 @@ function AuthorTable({
                   </span>
                 </button>
               </th>
+              {showComparison && (
+                <th className="w-24 px-4 py-2 font-medium text-right">
+                  <button
+                    type="button"
+                    onClick={() => handleSort("clicksDelta")}
+                    className="flex w-full items-center justify-end gap-1 text-xs font-semibold text-slate-500 whitespace-nowrap"
+                  >
+                    <span>點擊變化</span>
+                    <span
+                      className={`text-[10px] ${getSortIndicatorClass("clicksDelta")}`}
+                    >
+                      {getSortIndicator("clicksDelta")}
+                    </span>
+                  </button>
+                </th>
+              )}
               <th className="w-20 px-4 py-2 font-medium text-right">
                 <button
                   type="button"
@@ -530,6 +546,13 @@ function AuthorTable({
                   <td className="px-4 py-2 text-right align-top font-mono text-[13px] text-slate-800">
                     {formatNumber(row.clicks)}
                   </td>
+                  {showComparison && (
+                    <td className="px-4 py-2 text-right align-top text-[11px] font-mono">
+                      <span className={deltaClassName(row.clicksDelta)}>
+                        {buildDelta(row.clicksDelta, " 次").label}
+                      </span>
+                    </td>
+                  )}
                   <td className="px-4 py-2 text-right align-top text-[13px] font-mono text-slate-600">
                     {formatPercent(row.ctr)}
                   </td>
