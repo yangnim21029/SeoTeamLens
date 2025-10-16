@@ -112,7 +112,8 @@ function buildWhereConditions(records, canonicalUrlMap, exactUrlMap) {
     }
 
     if (!exactUrlMap.has(pageUrl)) {
-      const sanitized = pageUrl.replace(/'/g, "''");
+      // 確保 URL 中的特殊字元（包含中文）被正確處理
+      const sanitized = pageUrl.replace(/'/g, "''").replace(/\\/g, "\\\\");
       exactUrlMap.set(pageUrl, sanitized);
       const condition = `(page = '${sanitized}')`;
       whereConditions.push(condition);

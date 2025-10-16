@@ -45,17 +45,21 @@ export async function GET(req, { params }) {
     );
 
     const safeId = encodeURIComponent(id);
+    // 確保 cache key 也被編碼，避免 header 中出現非 ASCII 字元
+    const safeCacheKey = cacheKey ? encodeURIComponent(cacheKey) : `page-metrics:${safeId}`;
 
     return NextResponse.json(payload, {
       status: 200,
       headers: {
         "Cache-Control": "s-maxage=86400, stale-while-revalidate=86400",
         "X-Cache-Duration": duration.toString(),
-        "X-Cache-Key": cacheKey || `page-metrics:${safeId}`,
+        "X-Cache-Key": safeCacheKey,
       },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[page-metrics] Error for project ${params?.id}:`, err);
+    console.error(`[page-metrics] Error stack:`, err instanceof Error ? err.stack : 'No stack trace');
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
