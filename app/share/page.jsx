@@ -105,11 +105,16 @@ export default function SharePage() {
   const [error, setError] = useState("");
   const [data, setData] = useState(null);
 
-  const fetchSummary = useCallback(async () => {
+  const fetchSummary = useCallback(async ({ refresh = false } = {}) => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/share/summary", { cache: "no-store" });
+      const params = new URLSearchParams();
+      if (refresh) params.set("refresh", "1");
+      params.set("_", Date.now().toString());
+      const res = await fetch(`/api/share/summary?${params.toString()}`, {
+        cache: "no-store",
+      });
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(text || `Request failed with ${res.status}`);
@@ -219,7 +224,7 @@ export default function SharePage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={fetchSummary}
+            onClick={() => fetchSummary({ refresh: true })}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 disabled:opacity-60"
             disabled={loading}
           >

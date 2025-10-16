@@ -13,18 +13,17 @@ const CACHE_TTL_SECONDS = 24 * 60 * 60;
 
 function safeEncodeUrl(url) {
   if (!url || typeof url !== "string") return url;
+  const trimmed = url.trim();
+  if (!trimmed) return url;
   try {
-    if (url.includes("%")) {
-      try {
-        const decoded = decodeURIComponent(url);
-        return decoded;
-      } catch {
-        return url;
-      }
-    }
-    return url;
+    const decoded = decodeURI(trimmed);
+    return encodeURI(decoded);
   } catch {
-    return url;
+    try {
+      return encodeURI(trimmed);
+    } catch {
+      return trimmed;
+    }
   }
 }
 
@@ -311,4 +310,3 @@ export async function fetchPageMetricsForProject(project, options = {}) {
     cacheKey: `page-metrics:${project.id}:${paramsHash}`,
   };
 }
-

@@ -32,7 +32,7 @@ const SITE_ID_RULES = [
     test: ({ host }) => host === "poplady-mag.com",
   },
   {
-    code: "U",
+    code: "UL",
     test: ({ host }) => host === "urbanlifehk.com",
   },
   {
@@ -332,6 +332,7 @@ export async function GET(req) {
       String(url.searchParams.get("window") ?? "").trim(),
       10,
     );
+    const refresh = url.searchParams.get("refresh") === "1";
     const windowDays =
       Number.isFinite(windowParam) && windowParam > 0
         ? windowParam
@@ -368,6 +369,7 @@ export async function GET(req) {
         const { payload } = await fetchPageMetricsForProject(project, {
           days: fetchDays,
           limit: 0,
+          refresh,
         });
 
         const comparison = computeWeeklyComparison(
