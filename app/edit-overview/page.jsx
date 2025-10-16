@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState, useTransition } from 
 import { ExternalLink } from "lucide-react";
 
 import { useRankData } from "../context/rank-data";
+import SectionCard from "../components/SectionCard";
 
 function formatNumber(value) {
   return Number.isFinite(value) ? Math.round(value).toLocaleString() : "—";
@@ -364,17 +365,17 @@ function AuthorTable({
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-slate-100">
-      <div className="flex items-center justify-between border-b border-slate-200/60 px-6 py-4 sm:px-8 sm:py-5">
+    <SectionCard
+      header={
         <div>
           <span className="text-base font-semibold text-slate-800 sm:text-lg">
             作者曝光表現
           </span>
           <span className="ml-2 text-xs text-slate-400">最近 {windowLabel}</span>
         </div>
-      </div>
-      <div className="px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-6">
-        <table className="min-w-full table-auto border-separate border-spacing-0 text-left text-sm">
+      }
+    >
+      <table className="min-w-full table-auto border-separate border-spacing-0 text-left text-sm">
           <thead className="bg-slate-50 text-slate-500">
             <tr>
               <th className="w-12 px-4 py-2 font-medium text-center">排名</th>
@@ -590,9 +591,8 @@ function AuthorTable({
               })
             )}
           </tbody>
-        </table>
-      </div>
-    </div>
+      </table>
+    </SectionCard>
   );
 }
 
