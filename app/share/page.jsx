@@ -133,70 +133,79 @@ export default function SharePage() {
     void fetchSummary();
   }, [fetchSummary]);
 
-  const rows = useMemo(() => {
+  const mapRow = useCallback((item, current = {}, previous = {}) => {
+    const siteLabel = formatSite(item.siteLabel || item.site);
+    const siteDisplay = item.siteId || siteLabel;
+    const clicksTone = deriveTone(
+      current.clicks ?? NaN,
+      previous.clicks ?? NaN,
+      "traffic",
+    );
+    const impressionsTone = deriveTone(
+      current.impressions ?? NaN,
+      previous.impressions ?? NaN,
+      "traffic",
+    );
+    const ctrTone = deriveTone(current.ctr ?? NaN, previous.ctr ?? NaN, "ratio");
+    const positionTone = deriveTone(
+      current.position ?? NaN,
+      previous.position ?? NaN,
+      "position",
+    );
+    return {
+      key: item.id,
+      label: { value: item.label, tone: "text-slate-700" },
+      site: {
+        value: siteDisplay,
+        tone: "text-slate-600",
+      },
+      urlCount: { value: formatInteger(item.urlCount), tone: "text-slate-600" },
+      lastClicks: { value: formatInteger(current.clicks), tone: clicksTone },
+      prevClicks: {
+        value: formatInteger(previous.clicks),
+        tone: "text-slate-400",
+      },
+      lastImpressions: {
+        value: formatInteger(current.impressions),
+        tone: impressionsTone,
+      },
+      prevImpressions: {
+        value: formatInteger(previous.impressions),
+        tone: "text-slate-400",
+      },
+      lastCtr: { value: formatPercent(current.ctr, 2), tone: ctrTone },
+      prevCtr: {
+        value: formatPercent(previous.ctr, 2),
+        tone: "text-slate-400",
+      },
+      lastPosition: {
+        value: formatDecimal(current.position, 2),
+        tone: positionTone,
+      },
+      prevPosition: {
+        value: formatDecimal(previous.position, 2),
+        tone: "text-slate-400",
+      },
+    };
+  }, []);
+
+  const weeklyRows = useMemo(() => {
     if (!data?.results) return [];
-    return data.results.map((item) => {
-      const current = item.current ?? {};
-      const previous = item.previous ?? {};
-      const siteLabel = formatSite(item.siteLabel || item.site);
-      const siteDisplay = item.siteId || siteLabel;
-      const clicksTone = deriveTone(
-        current.clicks ?? NaN,
-        previous.clicks ?? NaN,
-        "traffic",
-      );
-      const impressionsTone = deriveTone(
-        current.impressions ?? NaN,
-        previous.impressions ?? NaN,
-        "traffic",
-      );
-      const ctrTone = deriveTone(
-        current.ctr ?? NaN,
-        previous.ctr ?? NaN,
-        "ratio",
-      );
-      const positionTone = deriveTone(
-        current.position ?? NaN,
-        previous.position ?? NaN,
-        "position",
-      );
-      return {
-        key: item.id,
-        label: { value: item.label, tone: "text-slate-700" },
-        site: {
-          value: siteDisplay,
-          tone: "text-slate-600",
-        },
-        urlCount: { value: formatInteger(item.urlCount), tone: "text-slate-600" },
-        lastClicks: { value: formatInteger(current.clicks), tone: clicksTone },
-        prevClicks: {
-          value: formatInteger(previous.clicks),
-          tone: "text-slate-400",
-        },
-        lastImpressions: {
-          value: formatInteger(current.impressions),
-          tone: impressionsTone,
-        },
-        prevImpressions: {
-          value: formatInteger(previous.impressions),
-          tone: "text-slate-400",
-        },
-        lastCtr: { value: formatPercent(current.ctr, 2), tone: ctrTone },
-        prevCtr: {
-          value: formatPercent(previous.ctr, 2),
-          tone: "text-slate-400",
-        },
-        lastPosition: {
-          value: formatDecimal(current.position, 2),
-          tone: positionTone,
-        },
-        prevPosition: {
-          value: formatDecimal(previous.position, 2),
-          tone: "text-slate-400",
-        },
-      };
-    });
-  }, [data]);
+    return data.results.map((item) =>
+      mapRow(item, item.current ?? {}, item.previous ?? {}),
+    );
+  }, [data, mapRow]);
+
+  const monthlyRows = useMemo(() => {
+    if (!data?.results) return [];
+    return data.results.map((item) =>
+      mapRow(
+        item,
+        item.monthly?.current ?? {},
+        item.monthly?.previous ?? {},
+      ),
+    );
+  }, [data, mapRow]);
 
   const tsv = data?.tsv ?? "";
 
@@ -262,7 +271,7 @@ export default function SharePage() {
         }
         actions={
           <div className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">
-            共 {rows.length.toLocaleString()} 個專案
+            共 {weeklyRows.length.toLocaleString()} 個專案
           </div>
         }
       >
@@ -292,8 +301,97 @@ export default function SharePage() {
                     生成中…
                   </td>
                 </tr>
-              ) : rows.length ? (
-                rows.map((row, idx) => (
+              ) : weeklyRows.length ? (
+                weeklyRows.map((row, idx) => (
+                  <tr
+                    key={row.key}
+                    className={`transition-colors ${
+                      idx % 2 === 0
+                        ? "bg-white hover:bg-slate-50"
+                        : "bg-slate-50 hover:bg-slate-100"
+                    }`}
+                  >
+                    {COLUMN_CONFIG.map((col) => {
+                      const cell = row[col.key];
+                      const display =
+                        cell && typeof cell === "object" ? cell.value : cell;
+                      const tone =
+                        cell && typeof cell === "object" && cell.tone
+                          ? cell.tone
+                          : "text-slate-600";
+                      return (
+                        <td
+                          key={col.key}
+                          className={`px-4 py-3 text-sm ${
+                            col.align === "right" ? "text-right" : "text-left"
+                          }`}
+                        >
+                          <span className={`${tone} font-medium`}>{display}</span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={COLUMN_CONFIG.length}
+                    className="px-4 py-6 text-center text-sm text-slate-500"
+                  >
+                    尚無資料。
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        header={
+          <div>
+            <span className="text-base font-semibold text-slate-800 sm:text-lg">
+              月度比較 (30 天)
+            </span>
+            <span className="ml-2 text-xs text-slate-400">
+              最近 30 天對比上一期
+            </span>
+          </div>
+        }
+        actions={
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">
+            共 {monthlyRows.length.toLocaleString()} 個專案
+          </div>
+        }
+      >
+        <div className="overflow-auto">
+          <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+              <tr>
+                {COLUMN_CONFIG.map((col) => (
+                  <th
+                    key={col.key}
+                    className={`whitespace-pre-line px-4 py-3 text-sm font-semibold text-slate-600 ${
+                      col.align === "right" ? "text-right" : "text-left"
+                    }`}
+                  >
+                    {col.label.replace(/Week/g, "Month")}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {loading ? (
+                <tr>
+                  <td
+                    colSpan={COLUMN_CONFIG.length}
+                    className="px-4 py-6 text-center text-sm text-slate-500"
+                  >
+                    生成中…
+                  </td>
+                </tr>
+              ) : monthlyRows.length ? (
+                monthlyRows.map((row, idx) => (
                   <tr
                     key={row.key}
                     className={`transition-colors ${

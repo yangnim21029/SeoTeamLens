@@ -7,6 +7,7 @@ import {
 import { fetchPageMetricsForProject } from "@/app/lib/page-metrics-service";
 
 const DEFAULT_WINDOW_DAYS = 7;
+const MONTHLY_WINDOW_DAYS = 30;
 
 const SITE_ID_RULES = [
   {
@@ -229,7 +230,7 @@ function summarisePeriod(dailyMap, dates) {
   };
 }
 
-function computeWeeklyComparison(results, windowDays = DEFAULT_WINDOW_DAYS) {
+function computePeriodComparison(results, windowDays = DEFAULT_WINDOW_DAYS) {
   if (!Array.isArray(results) || !results.length) {
     return {
       current: null,
@@ -337,7 +338,7 @@ export async function GET(req) {
       Number.isFinite(windowParam) && windowParam > 0
         ? windowParam
         : DEFAULT_WINDOW_DAYS;
-    const fetchDays = windowDays * 2;
+    const fetchDays = Math.max(windowDays, MONTHLY_WINDOW_DAYS) * 2;
 
     const summaries = await loadProjectSummaries();
     if (!Array.isArray(summaries) || !summaries.length) {
@@ -372,9 +373,13 @@ export async function GET(req) {
           refresh,
         });
 
-        const comparison = computeWeeklyComparison(
+        const weekly = computePeriodComparison(
           payload?.results ?? [],
           windowDays,
+        );
+        const monthly = computePeriodComparison(
+          payload?.results ?? [],
+          MONTHLY_WINDOW_DAYS,
         );
 
         const site =
@@ -398,7 +403,8 @@ export async function GET(req) {
           siteId,
           siteLabel,
           urlCount,
-          ...comparison,
+          ...weekly,
+          monthly,
         });
       } catch (error) {
         errors.push({
