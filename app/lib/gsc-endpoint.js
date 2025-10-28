@@ -1,5 +1,3 @@
-const DEFAULT_GSC_DB_ENDPOINT = "https://slug-unique-possum.ngrok-free.app/api/query";
-
 function readEnv(keys) {
   for (const key of keys) {
     const raw = process.env[key];
@@ -11,9 +9,12 @@ function readEnv(keys) {
 }
 
 function normaliseEndpoint(value) {
-  if (!value) return DEFAULT_GSC_DB_ENDPOINT;
   const trimmed = value.trim();
-  if (!trimmed) return DEFAULT_GSC_DB_ENDPOINT;
+  if (!trimmed) {
+    throw new Error(
+      "GSC DB endpoint is empty. Please set GSC_DB_ENDPOINT, GSC_DB_URL, or GSC_DB_BASE_URL.",
+    );
+  }
   const withoutTrailing = trimmed.replace(/\/+$/, "");
   if (/\/api\/query$/i.test(withoutTrailing)) {
     return withoutTrailing;
@@ -27,5 +28,10 @@ export function getGscDbEndpoint() {
     "GSC_DB_URL",
     "GSC_DB_BASE_URL",
   ]);
+  if (!envValue) {
+    throw new Error(
+      "Missing GSC DB endpoint. Set GSC_DB_ENDPOINT, GSC_DB_URL, or GSC_DB_BASE_URL.",
+    );
+  }
   return normaliseEndpoint(envValue);
 }
